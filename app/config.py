@@ -21,6 +21,9 @@ MAX_UPLOAD_MB = int(os.environ.get("MATTING_MAX_UPLOAD_MB", "20"))
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_IMAGE_EDGE = int(os.environ.get("MATTING_MAX_IMAGE_EDGE", "4096"))
 
+# 真实推理分辨率：官方 handler 口径（固定正方形，最长边 <= 1024）
+INFER_SIZE = int(os.environ.get("MATTING_INFER_SIZE", "1024"))
+
 # 批量与重试
 MAX_RETRY_ATTEMPTS = int(os.environ.get("MATTING_MAX_RETRY", "2"))
 JOB_TIMEOUT_SECONDS = float(os.environ.get("MATTING_JOB_TIMEOUT", "120"))

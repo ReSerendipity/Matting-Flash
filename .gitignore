@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+.venv-real/
+.venv-host/
 venv/
 
 # 权重与结果：不入库

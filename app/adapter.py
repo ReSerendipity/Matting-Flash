@@ -27,19 +27,6 @@ class ModelNotReady(RuntimeError):
     pass
 
 
-def _accepts_kwargs(model) -> bool:  # pragma: no cover - 防御性探测
-    call = getattr(model, "forward", None)
-    if call is None:
-        return False
-    import inspect
-
-    try:
-        sig = inspect.signature(call)
-        return any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values())
-    except (TypeError, ValueError):
-        return False
-
-
 class BiRefNetAdapter:
     """按需加载的 BiRefNet 适配层（模块级单例 adapter）。"""
 
@@ -102,6 +89,8 @@ class BiRefNetAdapter:
                 self._model.eval()
                 device = "cuda" if torch.cuda.is_available() else "cpu"
                 self._model.to(device)
+                if device == "cuda":
+                    self._model.half()  # 真实推理使用 FP16（CPU 不支持半精度前向）
                 self._state = ModelState.READY
                 return self._model
             except Exception as exc:
@@ -112,20 +101,28 @@ class BiRefNetAdapter:
     def predict(self, image: Image.Image) -> np.ndarray:
         """真实 BiRefNet 推理，返回 [H,W] float32 alpha。
 
-        注意：需要本地权重与 torch/transformers。当前交付未下载权重，
-        该路径在本轮未被执行（见 phase-b.md「未测项」）。
+        预处理与官方 handler 一致：固定 Resize 到 MATTING_INFER_SIZE 正方形、
+        ImageNet 归一化；eval 模式取输出的最后一个尺度预测并 sigmoid。
+        模型为 FP16（CUDA）时输入同步转半精度。
         """
         model = self._ensure_model()  # 未就绪时抛 ModelNotReady
         import torch
+        from torchvision import transforms as T
 
         img = image.convert("RGB")
         w, h = img.size
-        try:
-            with torch.no_grad():
-                out = model(image=img) if _accepts_kwargs(model) else model(img)
-        except TypeError:
-            out = model(img)
-        preds = out["preds"] if isinstance(out, dict) and "preds" in out else out
+        size = config.INFER_SIZE
+        to_tensor = T.Compose([
+            T.Resize((size, size)),
+            T.ToTensor(),
+            T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
+        x = to_tensor(img).unsqueeze(0)
+        param = next(model.parameters())
+        x = x.to(device=param.device, dtype=param.dtype)
+        with torch.no_grad():
+            out = model(x)
+        preds = out[-1] if isinstance(out, (list, tuple)) else out
         alpha = preds.squeeze().float().sigmoid().cpu().numpy()
         if alpha.ndim == 3:
             alpha = alpha[0]

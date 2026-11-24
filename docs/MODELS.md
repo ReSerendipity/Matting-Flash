@@ -41,5 +41,10 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 
 ## 验证状态
 
-真实 BiRefNet 推理**未测**：本轮未下载任何权重、未安装 torch/transformers。
-状态为 `CODE_READY_MODEL_UNTESTED`。
+真实 BiRefNet 推理**已测**（2026-11-24，状态 `MODEL_TESTED`）：
+
+- 权重：官方 `ZhengPeng7/BiRefNet` 通用权重，`weights/model.safetensors`，444,473,596 字节，SHA256 `9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154`；2026-11-24 经 hf-mirror 直连下载，工具 `huggingface_hub.snapshot_download`。
+- 环境：项目内 `.venv-real`，以 `--system-site-packages` 复用本机 `torch 2.11.0+cu128`（未重复下载 torch）；仅新装 `timm`，其余（torchvision/transformers/kornia/einops/huggingface-hub 等）继承宿主；`pip check` 通过。
+- 推理：FP16、batch=1、输入固定 Resize 1024×1024（官方 handler 口径，最长边 ≤1024），样本为公有领域肖像（Grace Hopper，512×600）；加载 3.8s、前向 5.2s、峰值显存 1.58GB；脚本输出 alpha 对齐回原图，导出透明 PNG 512×600。
+- 链路：服务 `/api/status` = `READY`；`/api/matting/single` 返回 RGBA 512×600 透明 PNG，alpha 非空（180,463 个非全透明像素）。证据目录 `results/real-20261124-214136/`，阶段报告见 `phase-c.md`。
+- **未测边界**：>2K 高分辨率输入的显存/耗时；批量并发链路（本次仅单图）；HR/Matting 等其他官方变体未下未测。

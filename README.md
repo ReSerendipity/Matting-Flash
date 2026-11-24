@@ -1,6 +1,6 @@
 # Matting-Lite
 
-本地通用图片抠图与透明背景导出工作台。首版源码可运行、测试完整；真实 BiRefNet 推理**未测**（未下载权重），状态 `CODE_READY_MODEL_UNTESTED`。
+本地通用图片抠图与透明背景导出工作台。源码可运行、测试完整；真实 BiRefNet 推理已在本机 RTX 5070 Ti Laptop 12GB 跑通，状态 `MODEL_TESTED`（高分辨率/批量边界仍未测）。
 
 ## 定位与边界
 
@@ -14,8 +14,8 @@
 
 - ✅ 29 个自动化测试通过（后处理数值边界、透明导出、批量状态、API 未就绪语义）。
 - ✅ 开发模式冒烟：服务仅监听 `127.0.0.1`，UI 明确显示 `NOT_READY`，提交返回 409 `MODEL_NOT_READY`，**不用假图冒充结果**。
-- ❌ 真实 BiRefNet 推理未执行：未下载权重、未安装 torch/transformers。
-- 详见 `docs/MODELS.md` 与阶段报告 `phase-b.md`。
+- ✅ 真实 BiRefNet 推理已测（2026-11-24）：官方 `ZhengPeng7/BiRefNet` 通用权重（444,473,596 字节，SHA256 `9ab37426…a154`），FP16、batch=1、输入 1024×1024（官方 handler 口径），加载 3.8s / 前向 5.2s / 峰值显存 1.58GB；`/api/status` 为 `READY`，`/api/matting/single` 返回与输入同尺寸的透明 PNG（alpha 非空）。证据见 `results/real-20261124-214136/`。
+- 未测边界：>2K 高分辨率的显存/耗时、批量并发链路。详见 `docs/MODELS.md` 与阶段报告 `phase-c.md`。
 
 ## 安装（需要 Python 3.10+）
 
@@ -50,6 +50,5 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 
 ## 已知限制
 
-- 真实推理路径未跑通（无权重），`adapter.predict` 属已实现未验证代码。
-- 高分辨率（>2K）显存与耗时未测。
+- 真实推理仅覆盖单图 1024×1024 FP16 一路；高分辨率（>2K）显存与耗时未测。
 - 批量并发为串行执行；单任务超时保护依赖客户端，服务端不设硬超时。
