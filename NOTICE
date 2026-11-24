@@ -1,5 +1,5 @@
-AlphaCut-Flash
-Copyright 2026 AlphaCut-Flash contributors
+Matting-Lite
+Copyright 2026 Matting-Lite contributors
 
 本项目外壳代码以 Apache-2.0 发布（见 LICENSE）。模型权重不随本项目分发，
 也不随安装包分发；各模型权重的许可以下方声明与 docs/MODELS.md 为准。

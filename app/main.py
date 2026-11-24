@@ -1,4 +1,4 @@
-"""AlphaCut-Flash 本地 Web 工作台（默认仅监听 127.0.0.1）。"""
+"""Matting-Lite 本地 Web 工作台（默认仅监听 127.0.0.1）。"""
 from __future__ import annotations
 
 import base64
@@ -14,7 +14,7 @@ from .adapter import ModelNotReady, adapter
 from .postprocess import PostParams, reset_params
 from .queue import InvalidFile, MattingService
 
-app = FastAPI(title="AlphaCut-Flash", version="0.1.0")
+app = FastAPI(title="Matting-Lite", version="0.1.0")
 service = MattingService()
 
 

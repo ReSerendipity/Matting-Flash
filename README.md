@@ -1,4 +1,4 @@
-# AlphaCut-Flash
+# Matting-Lite
 
 本地通用图片抠图与透明背景导出工作台。首版源码可运行、测试完整；真实 BiRefNet 推理**未测**（未下载权重），状态 `CODE_READY_MODEL_UNTESTED`。
 
@@ -33,7 +33,7 @@ pip install "huggingface-hub>0.25"
 python -c "from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet', local_dir='weights')"
 ```
 
-如需真实推理还需安装较重依赖（torch/transformers 等，见 requirements.txt 注释）。权重放在 `weights/` 即可被识别；可用环境变量 `ALPHACUT_WEIGHTS_DIR` 改路径。
+如需真实推理还需安装较重依赖（torch/transformers 等，见 requirements.txt 注释）。权重放在 `weights/` 即可被识别；可用环境变量 `MATTING_WEIGHTS_DIR` 改路径。
 
 ## 最小使用
 

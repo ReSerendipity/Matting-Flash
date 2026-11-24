@@ -56,7 +56,7 @@ def test_batch_accepts_valid_file_but_never_fakes_result(client):
 def test_index_page_loads(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert "AlphaCut-Flash" in r.text
+    assert "Matting-Lite" in r.text
 
 
 def test_result_file_blocks_traversal(client):
