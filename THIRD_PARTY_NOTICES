@@ -1,0 +1,22 @@
+# Third-Party Notices
+
+运行依赖（仅在与本项目一起分发时才需随附相应许可文本）：
+
+| 组件 | 许可 | 用途 |
+|---|---|---|
+| numpy | BSD-3-Clause | alpha 数组与后处理 |
+| Pillow | HPND (MIT-CMU 类) | 图像读写、透明 PNG 导出 |
+| FastAPI | MIT | 本地 Web API |
+| Uvicorn | BSD-3-Clause | ASGI 服务器 |
+| python-multipart | Apache-2.0 | 表单/文件上传解析 |
+| pytest | MIT | 测试框架 |
+| httpx | BSD-3-Clause / Apache-2.0 双许可 | 测试客户端 |
+
+可选的真实推理依赖（不随首版安装，需用户自行安装并遵守各自许可）：
+torch (BSD-3-Clause)、torchvision (BSD-3-Clause)、transformers (Apache-2.0)、
+timm (Apache-2.0)、kornia (Apache-2.0)、accelerate (Apache-2.0)、
+huggingface-hub (Apache-2.0)。
+
+模型权重（不随项目分发）：
+- BiRefNet（含 general / matting / HR / dynamic / lite / portrait 等变体）：MIT，
+  Copyright Peng Zheng et al.。完整许可与各变体说明见 docs/MODELS.md。

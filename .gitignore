@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# 权重与结果：不入库
+weights/*
+!weights/.gitkeep
+results/*
+!results/.gitkeep
+
+# 系统/编辑器
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/

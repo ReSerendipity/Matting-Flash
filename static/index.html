@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>AlphaCut-Flash · 本地抠图工作台</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#e6e9ef; --muted:#8b93a3; --acc:#4f8cff; --danger:#ff5d5d; --ok:#3ecf8e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; }
+  h1 { font-size:16px; margin:0; font-weight:600; }
+  .badge { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.3px; }
+  .badge.notready { background:#3a1518; color:var(--danger); border:1px solid #6b2023; }
+  .badge.ready { background:#0f2c22; color:var(--ok); border:1px solid #1d5c44; }
+  .detail { color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:16px 20px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .panel h2 { font-size:13px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .drop { border:1.5px dashed var(--line); border-radius:10px; padding:22px; text-align:center; color:var(--muted); cursor:pointer; }
+  .drop.over { border-color:var(--acc); color:var(--fg); }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
+  input[type=range] { width:100%; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .triplet { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .view { border:1px solid var(--line); border-radius:10px; overflow:hidden; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; background:#000; }
+  .view img { max-width:100%; max-height:100%; transition:transform .08s linear; }
+  .view .ph { color:var(--muted); font-size:13px; text-align:center; padding:10px; }
+  .cap { text-align:center; color:var(--muted); font-size:12px; margin-top:6px; }
+  .checker { background-image:linear-gradient(45deg,#3a3f4b 25%,transparent 25%),linear-gradient(-45deg,#3a3f4b 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#3a3f4b 75%),linear-gradient(-45deg,transparent 75%,#3a3f4b 75%); background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; background-color:#2a2f3a; }
+  .bg-white { background:#fff; } .bg-black { background:#000; }
+  .jobs { max-height:280px; overflow:auto; }
+  .job { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; font-size:12px; }
+  .st { padding:1px 8px; border-radius:999px; font-weight:600; }
+  .st.done { color:var(--ok); } .st.failed,.st.invalid { color:var(--danger); } .st.running { color:var(--acc); } .st.queued { color:var(--muted); } .st.canceled { color:var(--muted); text-decoration:line-through; }
+  .err { color:var(--danger); font-size:12px; min-height:16px; }
+  label.chk { display:flex; gap:6px; align-items:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AlphaCut-Flash</h1>
+  <span id="modelBadge" class="badge notready">MODEL · NOT_READY</span>
+  <span id="modelDetail" class="detail">正在检查模型…</span>
+</header>
+<main>
+  <div>
+    <section class="panel">
+      <h2>输入</h2>
+      <div id="drop" class="drop">点击或拖入 PNG / JPEG / WebP（可多选批量）</div>
+      <input id="file" type="file" accept=".png,.jpg,.jpeg,.webp" multiple hidden />
+      <div class="row"><button id="runBtn" disabled>开始抠图</button><span id="fileInfo" class="detail">未选择文件</span></div>
+      <div id="submitErr" class="err"></div>
+    </section>
+    <section class="panel" style="margin-top:14px;">
+      <h2>后处理</h2>
+      <div class="row"><label for="feather">边缘羽化</label><span id="featherVal">0 px</span></div>
+      <input id="feather" type="range" min="0" max="8" step="0.5" value="0" />
+      <div class="row"><label for="threshold">阈值</label><span id="thresholdVal">关</span></div>
+      <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5" disabled />
+      <div class="row"><label class="chk"><input id="binarize" type="checkbox" /> 二值化（阈值缺省 0.5）</label></div>
+      <div class="row"><label for="erode">腐蚀</label><span id="erodeVal">0</span></div>
+      <input id="erode" type="range" min="0" max="6" step="1" value="0" />
+      <div class="row"><label for="dilate">膨胀</label><span id="dilateVal">0</span></div>
+      <input id="dilate" type="range" min="0" max="6" step="1" value="0" />
+      <button id="resetBtn" class="ghost" style="width:100%;margin-top:8px;">参数复位</button>
+    </section>
+    <section class="panel" style="margin-top:14px;">
+      <h2>批量队列</h2>
+      <div id="jobs" class="jobs"><div class="detail">暂无任务</div></div>
+    </section>
+  </div>
+  <div>
+    <section class="panel">
+      <h2>预览</h2>
+      <div class="row" style="justify-content:flex-start;gap:16px;">
+        <label>缩放 <input id="zoom" type="range" min="0.5" max="3" step="0.1" value="1" style="width:120px;" /></label>
+        <label class="chk">背景
+          <select id="bgSel">
+            <option value="checker">棋盘格</option>
+            <option value="white">白色</option>
+            <option value="black">黑色</option>
+          </select>
+        </label>
+      </div>
+      <div class="triplet">
+        <div><div id="vOrig" class="view checker"><div class="ph">原图</div></div><div class="cap">原图</div></div>
+        <div><div id="vMask" class="view checker"><div class="ph">蒙版</div></div><div class="cap">蒙版 alpha</div></div>
+        <div><div id="vResult" class="view checker"><div class="ph">结果（透明 PNG）</div></div><div class="cap">结果</div></div>
+      </div>
+      <div id="notReadyNote" class="err" style="margin-top:10px;"></div>
+      <div style="margin-top:8px;"><a id="dl" class="ghost" style="display:none;padding:8px 14px;border-radius:8px;border:1px solid var(--line);color:var(--fg);text-decoration:none;">下载透明 PNG</a></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let selected = [];
+let defaults = {};
+
+async function refreshStatus() {
+  const r = await fetch('/api/status'); const s = await r.json();
+  const badge = $('modelBadge');
+  if (s.state === 'READY') { badge.className = 'badge ready'; badge.textContent = 'MODEL · READY'; }
+  else { badge.className = 'badge notready'; badge.textContent = 'MODEL · ' + s.state; }
+  $('modelDetail').textContent = s.detail;
+  $('runBtn').disabled = s.state !== 'READY' || selected.length === 0;
+  $('notReadyNote').textContent = s.state !== 'READY'
+    ? '模型未就绪（' + s.state + '）：' + s.detail + '。按 README 下载权重后重启，此处不会用假图冒充结果。' : '';
+  defaults = s.defaults;
+}
+
+function setBg(cls) { ['vOrig','vMask','vResult'].forEach(id => { const v = $(id); v.className = 'view ' + cls; }); }
+$('bgSel').onchange = (e) => setBg(e.target.value);
+
+function applyZoom() { document.querySelectorAll('.view img').forEach(im => im.style.transform = 'scale(' + $('zoom').value + ')'); }
+$('zoom').oninput = applyZoom;
+
+function setView(id, src) {
+  const v = $(id); v.innerHTML = '';
+  if (!src) { v.innerHTML = '<div class="ph">' + ({vOrig:'原图',vMask:'蒙版',vResult:'结果（透明 PNG）'})[id] + '</div>'; return; }
+  const im = new Image(); im.src = src; v.appendChild(im); applyZoom();
+}
+
+function params() {
+  const t = $('threshold');
+  return {
+    feather_radius: parseFloat($('feather').value),
+    threshold: t.disabled ? null : parseFloat(t.value),
+    binarize: $('binarize').checked,
+    erode: parseInt($('erode').value, 10),
+    dilate: parseInt($('dilate').value, 10),
+  };
+}
+function syncLabels() {
+  $('featherVal').textContent = $('feather').value + ' px';
+  $('thresholdVal').textContent = $('threshold').disabled ? '关' : $('threshold').value;
+  $('erodeVal').textContent = $('erode').value;
+  $('dilateVal').textContent = $('dilate').value;
+}
+['feather','threshold','erode','dilate'].forEach(id => $(id).oninput = syncLabels);
+$('binarize').onchange = () => { $('threshold').disabled = !$('binarize').checked && $('threshold').dataset.manual !== '1'; syncLabels(); };
+$('threshold').onpointerdown = () => { $('threshold').dataset.manual = '1'; $('threshold').disabled = false; };
+
+$('resetBtn').onclick = () => {
+  $('feather').value = defaults.feather_radius ?? 0;
+  $('threshold').value = 0.5; $('threshold').disabled = true; delete $('threshold').dataset.manual;
+  $('binarize').checked = false; $('erode').value = 0; $('dilate').value = 0;
+  $('zoom').value = 1; syncLabels(); applyZoom();
+};
+
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { addFiles([...e.dataTransfer.files]); });
+$('file').onchange = (e) => { addFiles([...e.target.files]); };
+
+function addFiles(files) {
+  selected = files.filter(f => ['.png','.jpg','.jpeg','.webp'].includes(('.' + f.name.split('.').pop()).toLowerCase()));
+  $('fileInfo').textContent = selected.length ? `已选择 ${selected.length} 个文件` : '未选择文件';
+  if (selected.length) {
+    const r = new FileReader();
+    r.onload = () => setView('vOrig', r.result);
+    r.readAsDataURL(selected[0]);
+  }
+  refreshStatus();
+}
+
+$('runBtn').onclick = async () => {
+  $('submitErr').textContent = '';
+  if (selected.length === 1) {
+    const fd = new FormData();
+    fd.append('file', selected[0]);
+    fd.append('params', JSON.stringify(params()));
+    const r = await fetch('/api/matting/single', { method:'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) { $('submitErr').textContent = (j.detail && j.detail.message) || '任务失败'; return; }
+    setView('vOrig', j.preview.original); setView('vMask', j.preview.mask); setView('vResult', j.preview.result);
+    const dl = $('dl'); dl.href = '/results/' + j.cutout_name; dl.download = j.cutout_name; dl.style.display = 'inline-block';
+  } else {
+    const fd = new FormData();
+    selected.forEach(f => fd.append('files', f));
+    fd.append('params', JSON.stringify(params()));
+    const r = await fetch('/api/batch', { method:'POST', body: fd });
+    const j = await r.json();
+    if (r.ok) { renderJobs(j.jobs); pollJobs(); }
+    else $('submitErr').textContent = '批量提交失败';
+  }
+};
+
+function renderJobs(jobs) {
+  const box = $('jobs'); box.innerHTML = '';
+  if (!jobs.length) { box.innerHTML = '<div class="detail">暂无任务</div>'; return; }
+  jobs.forEach(j => {
+    const div = document.createElement('div'); div.className = 'job';
+    div.innerHTML = `<span class="st ${j.state}">${j.state}</span><span style="flex:1">${j.filename}</span>` +
+      (j.error ? `<span class="detail">${j.error}</span>` : '') +
+      `<button class="ghost" data-act="retry" data-id="${j.job_id}">重试</button>` +
+      `<button class="ghost" data-act="cancel" data-id="${j.job_id}">取消</button>`;
+    box.appendChild(div);
+  });
+  box.querySelectorAll('button').forEach(b => b.onclick = async () => {
+    await fetch(`/api/jobs/${b.dataset.id}/${b.dataset.act}`, { method:'POST' });
+    pollJobs();
+  });
+}
+
+let polling = null;
+async function pollJobs() {
+  if (polling) return;
+  polling = setInterval(async () => {
+    const r = await fetch('/api/jobs'); const j = await r.json();
+    renderJobs(j.jobs);
+    if (!j.jobs.some(x => x.state === 'queued' || x.state === 'running')) { clearInterval(polling); polling = null; }
+  }, 800);
+}
+
+syncLabels();
+refreshStatus();
+</script>
+</body>
+</html>

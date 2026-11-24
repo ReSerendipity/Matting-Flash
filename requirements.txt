@@ -1,0 +1,13 @@
+# AlphaCut-Flash 运行依赖（Web 工作台 + 后处理 + 测试）
+numpy<2
+pillow
+fastapi
+uvicorn
+python-multipart
+
+# 测试
+pytest
+httpx
+
+# 真实 BiRefNet 推理为可选项，不在首版自动安装（体积大）：
+#   pip install "torch>=2.5.0" torchvision transformers timm kornia accelerate "huggingface-hub>0.25"

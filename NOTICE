@@ -1,0 +1,16 @@
+AlphaCut-Flash
+Copyright 2026 AlphaCut-Flash contributors
+
+本项目外壳代码以 Apache-2.0 发布（见 LICENSE）。模型权重不随本项目分发，
+也不随安装包分发；各模型权重的许可以下方声明与 docs/MODELS.md 为准。
+
+模型与第三方归属：
+- BiRefNet（代码与权重）by Peng Zheng et al.，MIT License。
+  代码仓库：https://github.com/ZhengPeng7/BiRefNet
+  权重页面：https://huggingface.co/ZhengPeng7/BiRefNet
+  说明：HF 讨论区 #23 中作者确认可在 MIT 下自由使用；作者同时提示训练数据集
+  （如 DIS5K）条款在极端情形下存在理论争议。详见 docs/MODELS.md。
+- BiRefNet-V2：官方论文 arXiv:2611.11272（2026-11）。截至 2026-11-24 未见
+  公开发布的 V2 权重，首版未采用。
+
+本 NOTICE 为告知性质，不构成法律意见。
