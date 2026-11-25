@@ -252,7 +252,7 @@ def main(argv=None) -> int:
         ["status_not_ready", "notready_badge", "notready_note",
          "runbutton_disabled_in_not_ready", "file_preview_visible", "no_job_created"]
         if args.prepare_only
-        else ["status_ready", "file_preview_visible", "real_job_started",
+        else ["status_ready", "no_demo", "file_preview_visible", "real_job_started",
               "terminal_success", "result_visible", "download_nonempty", "artifact_valid"]
     )
     ok = (
