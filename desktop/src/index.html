@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matting-Flash 正在启动</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0f16;
+    --card: #121722;
+    --line: #232b3a;
+    --text: #e6eaf2;
+    --muted: #8b93a3;
+    --accent: #4f8cff;
+    --ok: #3ecf8e;
+    --err: #ff6b7a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: radial-gradient(1100px 680px at 18% -10%, #16233a 0%, var(--bg) 58%);
+    color: var(--text);
+  }
+  .card {
+    width: min(580px, 90vw); padding: 32px 32px 24px;
+    background: linear-gradient(180deg, rgba(28, 38, 58, .92), rgba(18, 23, 34, .96));
+    border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .mark {
+    width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center;
+    font-weight: 800; font-size: 15px; letter-spacing: .06em;
+    background: conic-gradient(from 200deg, #4f8cff, #35d0b0 55%, #4f8cff); color: #fff;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.14);
+  }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .01em; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .status { margin-top: 28px; display: flex; align-items: flex-start; gap: 12px; }
+  .spinner {
+    width: 18px; height: 18px; margin-top: 3px; flex: none;
+    border-radius: 50%;
+    border: 2px solid rgba(79, 140, 255, .25); border-top-color: var(--accent);
+    animation: spin .9s linear infinite;
+  }
+  .spinner.ok { border-color: rgba(62, 207, 142, .25); border-top-color: var(--ok); animation-duration: 1.5s; }
+  .spinner[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #statusText { margin: 0; font-size: 15px; line-height: 1.5; }
+  #errorText { margin: 8px 0 0; color: var(--err); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .actions { margin-top: 18px; display: flex; gap: 10px; }
+  .actions[hidden] { display: none; }
+  button {
+    border: 0; border-radius: 10px; padding: 10px 16px; font-size: 13px; cursor: pointer;
+    background: var(--accent); color: #fff;
+  }
+  button.secondary { background: #1b2436; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .6; cursor: default; }
+  dl.meta { margin: 26px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; }
+  dl.meta > div { display: flex; gap: 12px; margin-top: 8px; }
+  dt { flex: none; width: 72px; color: var(--muted); }
+  dd { margin: 0; word-break: break-all; color: #c9d6ea; }
+  .hint { margin: 22px 0 0; color: var(--muted); font-size: 12px; line-height: 1.75; }
+  .hint b { color: #d7e2f5; font-weight: 600; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <span class="mark">MF</span>
+      <div>
+        <h1>Matting-Flash</h1>
+        <p>本地抠图工作台 · 图片不出本机</p>
+      </div>
+    </div>
+
+    <div class="status">
+      <div class="spinner" id="spinner"></div>
+      <div>
+        <p id="statusText">正在启动本地服务…</p>
+        <p id="errorText" hidden></p>
+      </div>
+    </div>
+
+    <div class="actions" id="actions" hidden>
+      <button id="retry">重试启动</button>
+      <button id="openWeights" class="secondary">打开权重目录</button>
+    </div>
+
+    <dl class="meta">
+      <div><dt>版本</dt><dd id="version">—</dd></div>
+      <div><dt>权重目录</dt><dd id="weights">—</dd></div>
+    </dl>
+
+    <p class="hint" id="hint">
+      首次启动会加载本地推理运行时（CPU/GPU 视环境而定），通常数十秒。缺少模型权重时仍可启动，
+      页面会显示 <b>NOT_READY</b> 与权重放置目录；模型就绪后自动进入工作台。
+      权重放置说明见安装目录下 <b>app/docs/MODELS.md</b>。
+    </p>
+  </main>
+
+  <script src="desktop-bridge.js"></script>
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const bridge = window.__MATTING_DESKTOP__;
+
+    function render(snap) {
+      if (!snap) return;
+      if (snap.message) $("statusText").textContent = snap.message;
+      if (snap.error) {
+        $("errorText").textContent = snap.error;
+        $("errorText").hidden = false;
+        $("actions").hidden = false;
+        $("spinner").hidden = true;
+        $("spinner").classList.remove("ok");
+      } else {
+        $("errorText").hidden = true;
+        $("actions").hidden = true;
+        $("spinner").hidden = false;
+      }
+      if (snap.ready) $("spinner").classList.add("ok");
+    }
+
+    async function boot() {
+      if (!bridge || !bridge.isTauri) {
+        $("statusText").textContent = "请通过 Matting-Flash 桌面应用启动";
+        $("spinner").hidden = true;
+        return;
+      }
+
+      try {
+        const info = await bridge.invoke("get_app_info");
+        $("version").textContent = "v" + info.version;
+        $("weights").textContent = info.weights_dir;
+        $("weights").title = info.weights_dir;
+        if (info.python_mode === "path") {
+          $("statusText").textContent = "正在启动本地服务（PATH 解释器，仅开发态）…";
+        }
+      } catch (err) {
+        console.warn("get_app_info 失败", err);
+      }
+
+      await bridge.listen("startup-status", (event) => render(event.payload));
+      try {
+        render(await bridge.invoke("get_startup_status"));
+      } catch (err) {
+        console.warn("get_startup_status 失败", err);
+      }
+
+      $("retry").addEventListener("click", async () => {
+        $("retry").disabled = true;
+        try {
+          await bridge.invoke("retry_start");
+        } catch (err) {
+          $("errorText").textContent = "重试失败：" + err;
+          $("errorText").hidden = false;
+        } finally {
+          $("retry").disabled = false;
+        }
+      });
+
+      $("openWeights").addEventListener("click", async () => {
+        try {
+          await bridge.invoke("open_weights_dir");
+        } catch (err) {
+          $("errorText").textContent = "打开目录失败：" + err;
+          $("errorText").hidden = false;
+        }
+      });
+    }
+
+    boot();
+  </script>
+</body>
+</html>

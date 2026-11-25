@@ -18,3 +18,7 @@ Thumbs.db
 Desktop.ini
 .vscode/
 .idea/
+
+# 桌面壳构建产物（构建根在 D 盘；这些路径即使出现在仓内也不入库）
+desktop/node_modules/
+desktop/src-tauri/target/

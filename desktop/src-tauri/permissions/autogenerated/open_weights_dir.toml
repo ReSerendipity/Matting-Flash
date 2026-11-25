@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-weights-dir"
+description = "Enables the open_weights_dir command without any pre-configured scope."
+commands.allow = ["open_weights_dir"]
+
+[[permission]]
+identifier = "deny-open-weights-dir"
+description = "Denies the open_weights_dir command without any pre-configured scope."
+commands.deny = ["open_weights_dir"]

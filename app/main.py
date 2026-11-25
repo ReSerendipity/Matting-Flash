@@ -10,12 +10,12 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from . import config
+from . import __version__, config
 from .adapter import ModelNotReady, adapter
 from .postprocess import PostParams, reset_params
 from .queue import InvalidFile, MattingService
 
-app = FastAPI(title="Matting-Flash", version="0.1.0")
+app = FastAPI(title="Matting-Flash", version=__version__)
 service = MattingService()
 
 
@@ -39,6 +39,15 @@ def _parse_params(raw: str | None) -> PostParams:
 @app.get("/api/status")
 def status() -> dict:
     out = adapter.status_dict()
+    ready = out.get("state") == "READY"
+    # 桌面壳契约字段：ready/missing_weights 与 weights_dir/results_dir/version 一一对应，
+    # 缺权重时 ready=false 且明确列出候选权重文件名，绝不伪造就绪或推理。
+    out["ready"] = ready
+    out["missing_weights"] = [] if ready else [
+        name for name in config.WEIGHT_FILES if not (config.WEIGHTS_DIR / name).is_file()
+    ]
+    out["version"] = __version__
+    out["results_dir"] = str(config.RESULTS_DIR)
     out["defaults"] = reset_params()
     out["max_upload_mb"] = config.MAX_UPLOAD_MB
     out["allowed_extensions"] = sorted(config.ALLOWED_EXTENSIONS)

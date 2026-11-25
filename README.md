@@ -44,6 +44,19 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 
 浏览器打开 http://127.0.0.1:8765 ，拖入图片即可（模型就绪时）。头部徽章实时显示 `NOT_READY`/`READY`。
 
+## 桌面版（Windows，Tauri 2 + NSIS 当前用户安装器）
+
+- 安装包与数据分卷需同目录：`Matting-Flash-Setup-v<version>.exe` + `Matting-Flash-Data.7z.001..NNN`（SHA256 见 `SHA256SUMS`）。
+- 安装落 `%LOCALAPPDATA%\Programs\Matting-Flash`；权重/结果/日志落 `%LOCALAPPDATA%\Matting-Flash\{weights,results,logs}`，卸载默认保留。
+- 缺权重也可启动：加载页与页头显示 `NOT_READY`，提交返回 409 `MODEL_NOT_READY`；把 `model.safetensors` 放进权重目录即可（见 `docs/MODELS.md`）。
+- 构建（所有 target/分卷落 D 盘，产物不入 git）：
+
+```powershell
+.\scripts\build_desktop_bundle.ps1 -ReuseRuntime
+```
+
+完整端口/健康/安装卸载契约见 `docs/RELEASE_PROFILE.md`。
+
 ## 显存与许可
 
 - 建议 8GB 起步；6GB 需 FP16 + 控制分辨率（官方实测 FP16 1024×1024 ≈ 3.45GB）。依据与口径见 `docs/MODELS.md`。
