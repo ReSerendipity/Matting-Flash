@@ -1,4 +1,4 @@
-# Matting-Lite 运行依赖（Web 工作台 + 后处理 + 测试）
+# Matting-Flash 运行依赖（Web 工作台 + 后处理 + 测试）
 numpy<2
 pillow
 fastapi

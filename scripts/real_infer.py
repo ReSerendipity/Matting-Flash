@@ -38,7 +38,7 @@ def sha256_file(path: Path) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Matting-Lite 真实 BiRefNet 推理")
+    ap = argparse.ArgumentParser(description="Matting-Flash 真实 BiRefNet 推理")
     ap.add_argument("--input", required=True, help="输入图片路径")
     ap.add_argument("--outdir", required=True, help="输出目录（results/real-<ts>）")
     args = ap.parse_args()

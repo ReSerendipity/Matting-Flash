@@ -1,4 +1,4 @@
-"""Matting-Lite 配置。所有值均可被环境变量覆盖。"""
+"""Matting-Flash 配置。所有值均可被环境变量覆盖。"""
 from __future__ import annotations
 
 import os

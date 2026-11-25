@@ -1,4 +1,4 @@
-# Matting-Lite
+# Matting-Flash
 
 本地通用图片抠图与透明背景导出工作台。源码可运行、测试完整；真实 BiRefNet 推理已在本机 RTX 5070 Ti Laptop 12GB 跑通，状态 `MODEL_TESTED`（高分辨率/批量边界仍未测）。
 
