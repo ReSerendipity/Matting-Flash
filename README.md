@@ -15,6 +15,7 @@
 - ✅ 29 个自动化测试通过（后处理数值边界、透明导出、批量状态、API 未就绪语义）。
 - ✅ 开发模式冒烟：服务仅监听 `127.0.0.1`，UI 明确显示 `NOT_READY`，提交返回 409 `MODEL_NOT_READY`，**不用假图冒充结果**。
 - ✅ 真实 BiRefNet 推理已测（2026-11-24）：官方 `ZhengPeng7/BiRefNet` 通用权重（444,473,596 字节，SHA256 `9ab37426…a154`），FP16、batch=1、输入 1024×1024（官方 handler 口径），加载 3.8s / 前向 5.2s / 峰值显存 1.58GB；`/api/status` 为 `READY`，`/api/matting/single` 返回与输入同尺寸的透明 PNG（alpha 非空）。证据见 `results/real-20261124-214136/`。
+- ✅ 真实浏览器闭环已测（2026-11-25）：系统 Edge + Playwright 经页面控件上传 → `POST /api/matting/single` 200 → 三联预览 → 页面下载透明 PNG（512×600，alpha 0–255）；产物与 CLI 真实推理逐字节一致（SHA256 `64d3e680…b3d00`）。证据见 `results/browser-real-20261125-193219/`。
 - 未测边界：>2K 高分辨率的显存/耗时、批量并发链路。详见 `docs/MODELS.md` 与阶段报告 `phase-c.md`。
 
 ## 安装（需要 Python 3.10+）
