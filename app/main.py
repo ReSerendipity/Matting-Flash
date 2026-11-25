@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from . import config
 from .adapter import ModelNotReady, adapter
@@ -52,7 +53,10 @@ async def matting_single(
     p = _parse_params(params)
     data = await file.read()
     try:
-        info = service.submit_single(file.filename or "upload.png", data, p)
+        # 推理是阻塞调用：放线程池，避免占住事件循环导致页面轮询/状态端点假死
+        info = await run_in_threadpool(
+            service.submit_single, file.filename or "upload.png", data, p
+        )
     except ModelNotReady as exc:
         raise HTTPException(status_code=409, detail={"code": "MODEL_NOT_READY", "message": str(exc)})
     except InvalidFile as exc:
@@ -109,9 +113,11 @@ def job_cancel(job_id: str) -> JSONResponse:
 
 @app.post("/api/jobs/{job_id}/retry")
 def job_retry(job_id: str) -> JSONResponse:
-    if not service.retry(job_id):
+    job = service.retry(job_id)
+    if job is None:
         raise HTTPException(status_code=409, detail={"code": "CANNOT_RETRY"})
-    return JSONResponse({"ok": True})
+    # 重试是新建一条任务记录：原失败记录保留，新 job 进入队列
+    return JSONResponse({"ok": True, "job": job.to_dict()})
 
 
 @app.get("/results/{name}")

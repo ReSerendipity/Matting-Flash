@@ -39,6 +39,12 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 官方论文 arXiv:2611.11272（2026-11 上旬）。截至 2026-11-24，HF collection
 "BiRefNet-V2" 仅含论文与旧版模型，未见 V2 权重发布，首版不采用。
 
+## 推理输入与显存路径（2026-11-25）
+
+- 输入尺寸：长边 = `MATTING_INFER_SIZE`（默认 1024）。长边 >1024 时等比缩小、短边按 32 对齐（BiRefNet 编码器 32 倍下采样）；长边 ≤1024 时沿用官方 handler 的正方形口径。alpha 以 PIL `"F"` 浮点双线性还原到原图尺寸，不经过 8bit 量化。
+- 加载顺序：`model.half()` → `model.to("cuda")`。先前实现是 `to(cuda)` 后再 `half()`，FP32 全份权重先占卡（R4 浏览器实测峰值 3,132 MiB、CLI 实测 1.578 GB）；新顺序理论峰值更低，但真实数值未测量。
+- 契约测试：`tests/test_large_image.py`（3200×2000 → 推理输入 1024×640 → alpha 2000×3200）与 `tests/test_fp16_order.py`（fake 模型断言 `.half()` 先于 `.to("cuda")`），均不加载权重、不碰 GPU。
+
 ## 验证状态
 
 真实 BiRefNet 推理**已测**（2026-11-24，状态 `MODEL_TESTED`）：
@@ -47,4 +53,4 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 - 环境：项目内 `.venv-real`，以 `--system-site-packages` 复用本机 `torch 2.11.0+cu128`（未重复下载 torch）；仅新装 `timm`，其余（torchvision/transformers/kornia/einops/huggingface-hub 等）继承宿主；`pip check` 通过。
 - 推理：FP16、batch=1、输入固定 Resize 1024×1024（官方 handler 口径，最长边 ≤1024），样本为公有领域肖像（Grace Hopper，512×600）；加载 3.8s、前向 5.2s、峰值显存 1.58GB；脚本输出 alpha 对齐回原图，导出透明 PNG 512×600。
 - 链路：服务 `/api/status` = `READY`；`/api/matting/single` 返回 RGBA 512×600 透明 PNG，alpha 非空（180,463 个非全透明像素）。证据目录 `results/real-20261124-214136/`，阶段报告见 `phase-c.md`。
-- **未测边界**：>2K 高分辨率输入的显存/耗时；批量并发链路（本次仅单图）；HR/Matting 等其他官方变体未下未测。
+- **未测边界**：>2K 高分辨率输入的显存/耗时（目前只有 fake 契约）；批量真实推理链路（本次仅单图）；FP16 上卡顺序调整后的真实峰值；HR/Matting 等其他官方变体未下未测。

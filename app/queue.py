@@ -82,9 +82,21 @@ class MattingService:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._worker: threading.Thread | None = None
         if autostart:
-            self._worker = threading.Thread(target=self._run, daemon=True)
-            self._worker.start()
+            self.start()
+
+    def start(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            return
+        self._worker = threading.Thread(target=self._run, daemon=True)
+        self._worker.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        worker = self._worker
+        if worker is not None and worker.is_alive() and worker is not threading.current_thread():
+            worker.join(timeout=2.0)
 
     # ---- 单图 ----
     def submit_single(self, filename: str, data: bytes, params) -> dict:
@@ -133,14 +145,30 @@ class MattingService:
             return True
         return False
 
-    def retry(self, job_id: str) -> bool:
-        job = self._jobs.get(job_id)
-        if job is None or job.state not in (JobState.FAILED, JobState.INVALID):
-            return False
-        job.state = JobState.QUEUED
-        job.error = ""
-        job.attempts = 0
-        return True
+    def retry(self, job_id: str) -> Job | None:
+        """为失败/无效任务生成一个新的排队任务（新 job_id），原记录保留。
+
+        新任务复用原载荷与参数并重新校验；原 job 保持 FAILED/INVALID，
+        便于对照失败原因。返回新 Job，不可重试时返回 None。
+        """
+        src = self._jobs.get(job_id)
+        if src is None or src.state not in (JobState.FAILED, JobState.INVALID):
+            return None
+        job = Job(
+            job_id=uuid.uuid4().hex[:12],
+            filename=src.filename,
+            max_attempts=src.max_attempts,
+            raw_data=src.raw_data,
+            params=src.params,
+        )
+        try:
+            validate_upload(job.filename, job.raw_data)
+        except InvalidFile as exc:
+            job.state = JobState.INVALID
+            job.error = str(exc)
+        with self._lock:
+            self._jobs[job.job_id] = job
+        return job
 
     # ---- 处理 ----
     def render_and_save(self, filename: str, image: Image.Image, alpha_raw, params) -> dict:
@@ -160,28 +188,43 @@ class MattingService:
             "height": image.height,
         }
 
+    def _is_canceled(self, job: Job) -> bool:
+        return job.state == JobState.CANCELED
+
     def process_job(self, job: Job) -> None:
-        """同步处理一个任务，含重试。供 worker 与测试共用。"""
+        """同步处理一个任务，含重试。供 worker 与测试共用。
+
+        取消由外部把 state 置为 CANCELED：每轮开始与推理返回后各检查一次，
+        已取消的任务直接放弃（不落盘、不覆盖状态），不影响队列中的其他任务。
+        """
         while job.attempts < job.max_attempts:
+            if self._is_canceled(job):
+                return
             job.state = JobState.RUNNING
             try:
                 if self.adapter.state.value != "READY":
                     raise ModelNotReady(self.adapter.detail)
                 image = Image.open(io.BytesIO(job.raw_data))
                 alpha_raw = self.adapter.predict(image)
+                if self._is_canceled(job):  # 推理期间被取消：丢弃本次结果
+                    return
                 info = self.render_and_save(job.filename, image, alpha_raw, job.params)
                 job.result_name = info["cutout_name"]
                 job.state = JobState.DONE
                 job.error = ""
                 return
             except Exception as exc:
+                if self._is_canceled(job):
+                    return
                 job.attempts += 1
                 job.error = str(exc)
-        job.state = JobState.FAILED
+        if not self._is_canceled(job):
+            job.state = JobState.FAILED
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            pending = [j for j in self._jobs.values() if j.state == JobState.QUEUED]
+            with self._lock:  # 快照：避免批量提交时并发改字典
+                pending = [j for j in self._jobs.values() if j.state == JobState.QUEUED]
             if not pending:
                 self._stop.wait(0.2)
                 continue

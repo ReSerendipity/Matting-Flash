@@ -1,11 +1,16 @@
 """API 冒烟（开发模式）：未就绪状态必须可见，且不得伪造推理成功。"""
 from __future__ import annotations
 
+import asyncio
 import io
+import time
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+
+from app import config
 
 
 @pytest.fixture(scope="module")
@@ -62,3 +67,55 @@ def test_index_page_loads(client):
 def test_result_file_blocks_traversal(client):
     r = client.get("/results/..%2F..%2Fconfig.py")
     assert r.status_code == 404
+
+
+def test_status_endpoint_stays_responsive_during_inference(tmp_path, monkeypatch):
+    """阻塞推理必须在线程池执行：单图请求进行中，状态端点仍能立即返回。"""
+    import httpx
+
+    from app import main as main_mod
+    from app.adapter import ModelState
+
+    class SlowAdapter:
+        state = ModelState.READY
+        detail = "fake"
+
+        def predict(self, image):
+            time.sleep(0.4)
+            w, h = image.size
+            a = np.zeros((h, w), dtype=np.float32)
+            a[:, : w // 2] = 1.0
+            return a
+
+    monkeypatch.setattr(main_mod.service, "adapter", SlowAdapter())
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    payload = _png_bytes()
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=main_mod.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            timings: dict[str, tuple[float, int]] = {}
+
+            async def single():
+                t0 = time.time()
+                r = await ac.post(
+                    "/api/matting/single",
+                    files={"file": ("a.png", payload, "image/png")},
+                    data={"params": "{}"},
+                )
+                timings["single"] = (time.time() - t0, r.status_code)
+
+            async def status():
+                await asyncio.sleep(0.05)
+                t0 = time.time()
+                r = await ac.get("/api/status")
+                timings["status"] = (time.time() - t0, r.status_code)
+
+            await asyncio.gather(single(), status())
+            return timings
+
+    timings = asyncio.run(scenario())
+    assert timings["single"][1] == 200
+    assert timings["status"][1] == 200
+    assert timings["single"][0] >= 0.35, "单图请求应受 slow 推理支配"
+    assert timings["status"][0] < 0.3, "状态端点不得等待推理线程"

@@ -9,6 +9,8 @@
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 "Segoe UI", system-ui, sans-serif; }
   header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; }
   h1 { font-size:16px; margin:0; font-weight:600; }
+  h1, .badge { flex:0 0 auto; white-space:nowrap; }
+  #modelDetail { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
   .badge { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.3px; }
   .badge.notready { background:#3a1518; color:var(--danger); border:1px solid #6b2023; }
   .badge.ready { background:#0f2c22; color:var(--ok); border:1px solid #1d5c44; }
@@ -36,6 +38,15 @@
   .st.done { color:var(--ok); } .st.failed,.st.invalid { color:var(--danger); } .st.running { color:var(--acc); } .st.queued { color:var(--muted); } .st.canceled { color:var(--muted); text-decoration:line-through; }
   .err { color:var(--danger); font-size:12px; min-height:16px; }
   label.chk { display:flex; gap:6px; align-items:center; }
+  a.mini { color:var(--fg); text-decoration:none; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:2px 8px; white-space:nowrap; }
+  .runstate { margin-top:10px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#12151b; }
+  .runstate .bar { height:6px; border-radius:999px; background:#20242e; overflow:hidden; }
+  .runstate .bar i { display:block; height:100%; width:45%; border-radius:999px; background:var(--acc); animation:slide 1.1s ease-in-out infinite alternate; }
+  @keyframes slide { from { transform:translateX(-15%); } to { transform:translateX(155%); } }
+  .runtext { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--muted); margin-top:6px; }
+  .runtext strong { color:var(--acc); font-weight:600; letter-spacing:.3px; }
+  .runtext span { font-variant-numeric:tabular-nums; }
+  .oknote { color:var(--ok); font-size:12px; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -51,6 +62,11 @@
       <div id="drop" class="drop">点击或拖入 PNG / JPEG / WebP（可多选批量）</div>
       <input id="file" type="file" accept=".png,.jpg,.jpeg,.webp" multiple hidden />
       <div class="row"><button id="runBtn" disabled>开始抠图</button><span id="fileInfo" class="detail">未选择文件</span></div>
+      <div id="runState" class="runstate" hidden>
+        <div class="bar"><i></i></div>
+        <div class="runtext"><strong id="runLabel">RUNNING</strong><span id="runTimer">0.0s</span></div>
+      </div>
+      <div id="doneNote" class="oknote" hidden></div>
       <div id="submitErr" class="err"></div>
     </section>
     <section class="panel" style="margin-top:14px;">
@@ -96,6 +112,7 @@
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let selected = [];
 let defaults = {};
 
@@ -168,25 +185,67 @@ function addFiles(files) {
   refreshStatus();
 }
 
-$('runBtn').onclick = async () => {
+let runTick = null;
+let runStart = 0;
+
+function beginRun(label) {
+  $('runState').hidden = false;
+  $('runLabel').textContent = label;
+  $('runTimer').textContent = '0.0s';
+  $('doneNote').hidden = true;
   $('submitErr').textContent = '';
+  $('dl').style.display = 'none';
+  $('runBtn').disabled = true;
+  runStart = performance.now();
+  if (runTick) clearInterval(runTick);
+  // 阻塞 fetch 期间持续刷新计时与进度条，页面不会看起来假死
+  runTick = setInterval(() => {
+    $('runTimer').textContent = ((performance.now() - runStart) / 1000).toFixed(1) + 's';
+  }, 100);
+}
+
+function endRun(kind, text) {
+  if (runTick) { clearInterval(runTick); runTick = null; }
+  $('runState').hidden = true;
+  if (kind === 'ok') { $('doneNote').hidden = false; $('doneNote').textContent = text; }
+  else { $('submitErr').textContent = text; }
+  refreshStatus();
+}
+
+$('runBtn').onclick = async () => {
   if (selected.length === 1) {
     const fd = new FormData();
     fd.append('file', selected[0]);
     fd.append('params', JSON.stringify(params()));
-    const r = await fetch('/api/matting/single', { method:'POST', body: fd });
-    const j = await r.json();
-    if (!r.ok) { $('submitErr').textContent = (j.detail && j.detail.message) || '任务失败'; return; }
+    beginRun('RUNNING · 上传与推理中');
+    const t0 = performance.now();
+    let r, j;
+    try {
+      r = await fetch('/api/matting/single', { method:'POST', body: fd });
+      j = await r.json();
+    } catch (e) {
+      endRun('err', '请求失败：' + e); return;
+    }
+    if (!r.ok) { endRun('err', (j.detail && j.detail.message) || '任务失败'); return; }
     setView('vOrig', j.preview.original); setView('vMask', j.preview.mask); setView('vResult', j.preview.result);
     const dl = $('dl'); dl.href = '/results/' + j.cutout_name; dl.download = j.cutout_name; dl.style.display = 'inline-block';
+    endRun('ok', `完成 · ${j.width}×${j.height} · ${((performance.now() - t0) / 1000).toFixed(1)}s · 透明 PNG 已生成，可下载`);
   } else {
     const fd = new FormData();
     selected.forEach(f => fd.append('files', f));
     fd.append('params', JSON.stringify(params()));
-    const r = await fetch('/api/batch', { method:'POST', body: fd });
-    const j = await r.json();
-    if (r.ok) { renderJobs(j.jobs); pollJobs(); }
-    else $('submitErr').textContent = '批量提交失败';
+    let r, j;
+    try {
+      r = await fetch('/api/batch', { method:'POST', body: fd });
+      j = await r.json();
+    } catch (e) {
+      $('submitErr').textContent = '批量提交失败：' + e; return;
+    }
+    if (!r.ok) { $('submitErr').textContent = '批量提交失败'; return; }
+    const valid = j.jobs.filter(x => x.state !== 'invalid').length;
+    $('doneNote').hidden = false;
+    $('doneNote').textContent = `已提交 ${j.jobs.length} 个任务（有效 ${valid}），串行处理中…`;
+    renderJobs(j.jobs); pollJobs();
   }
 };
 
@@ -194,15 +253,26 @@ function renderJobs(jobs) {
   const box = $('jobs'); box.innerHTML = '';
   if (!jobs.length) { box.innerHTML = '<div class="detail">暂无任务</div>'; return; }
   jobs.forEach(j => {
+    const acts = [];
+    if (j.state === 'done' && j.result_name) {
+      acts.push(`<a class="mini" href="/results/${encodeURIComponent(j.result_name)}" download>下载</a>`);
+    }
+    if (j.state === 'failed' || j.state === 'invalid') {
+      acts.push(`<button class="ghost" data-act="retry" data-id="${j.job_id}">重试</button>`);
+    }
+    if (j.state === 'queued' || j.state === 'running') {
+      acts.push(`<button class="ghost" data-act="cancel" data-id="${j.job_id}">取消</button>`);
+    }
     const div = document.createElement('div'); div.className = 'job';
-    div.innerHTML = `<span class="st ${j.state}">${j.state}</span><span style="flex:1">${j.filename}</span>` +
-      (j.error ? `<span class="detail">${j.error}</span>` : '') +
-      `<button class="ghost" data-act="retry" data-id="${j.job_id}">重试</button>` +
-      `<button class="ghost" data-act="cancel" data-id="${j.job_id}">取消</button>`;
+    div.innerHTML = `<span class="st ${j.state}">${j.state}</span>` +
+      `<span style="flex:1" title="${esc(j.filename)}">${esc(j.filename)}</span>` +
+      (j.error ? `<span class="detail" title="${esc(j.error)}">${esc(j.error)}</span>` : '') +
+      acts.join('');
     box.appendChild(div);
   });
   box.querySelectorAll('button').forEach(b => b.onclick = async () => {
-    await fetch(`/api/jobs/${b.dataset.id}/${b.dataset.act}`, { method:'POST' });
+    const r = await fetch(`/api/jobs/${b.dataset.id}/${b.dataset.act}`, { method:'POST' });
+    if (!r.ok) { $('submitErr').textContent = '操作被拒绝'; }
     pollJobs();
   });
 }
@@ -211,9 +281,19 @@ let polling = null;
 async function pollJobs() {
   if (polling) return;
   polling = setInterval(async () => {
-    const r = await fetch('/api/jobs'); const j = await r.json();
+    let j;
+    try {
+      const r = await fetch('/api/jobs'); j = await r.json();
+    } catch (e) {
+      clearInterval(polling); polling = null; $('submitErr').textContent = '队列状态读取失败：' + e; return;
+    }
     renderJobs(j.jobs);
-    if (!j.jobs.some(x => x.state === 'queued' || x.state === 'running')) { clearInterval(polling); polling = null; }
+    if (!j.jobs.some(x => x.state === 'queued' || x.state === 'running')) {
+      clearInterval(polling); polling = null;
+      const done = j.jobs.filter(x => x.state === 'done').length;
+      $('doneNote').hidden = false;
+      $('doneNote').textContent = `批量结束：完成 ${done} / 共 ${j.jobs.length}（失败可重试，重试会新建任务）`;
+    }
   }, 800);
 }
 

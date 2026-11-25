@@ -1,7 +1,7 @@
 """Matting-Flash 浏览器真实链路验收脚本。
 
-阶段 A（--prepare-only）只验证 NOT_READY 页面语义与文件预览，不触发任何推理；
-真实阶段通过页面控件上传、抠图、下载并校验透明 PNG。
+阶段 A（--prepare-only）只验证 NOT_READY 页面语义、文件预览与大图/批量准备态，
+不触发任何推理；真实阶段通过页面控件上传、观察 RUNNING 态、抠图、下载并校验透明 PNG。
 """
 
 from __future__ import annotations
@@ -43,13 +43,27 @@ def parse_args(argv=None):
     parser.add_argument(
         "--prepare-only",
         action="store_true",
-        help="只验证页面状态、文件预览与按钮禁用语义，禁止触发真实任务",
+        help="只验证页面状态、大图/批量准备态与按钮禁用语义，禁止触发真实任务",
     )
     return parser.parse_args(argv)
 
 
 def write_json(path: Path, payload) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def make_sample(path: Path, size: tuple[int, int], color=(40, 80, 120)) -> Path:
+    """生成本地样本（不下载）；用于大图与批量准备态检查。"""
+    from PIL import Image, ImageDraw
+
+    if not path.is_file():
+        img = Image.new("RGB", size, color)
+        draw = ImageDraw.Draw(img)
+        w, h = size
+        draw.ellipse([w * 0.2, h * 0.15, w * 0.8, h * 0.85], fill=(235, 215, 190))
+        draw.rectangle([w * 0.35, h * 0.45, w * 0.65, h * 0.95], fill=(60, 60, 70))
+        img.save(path, format="PNG")
+    return path
 
 
 def validate_screenshot(path: Path, viewport: dict) -> dict:
@@ -92,16 +106,26 @@ def main(argv=None) -> int:
         "notready_note": False,
         "runbutton_disabled_in_not_ready": False,
         "file_preview_visible": False,
+        "big_sample_generated": False,
+        "big_image_preview": False,
+        "batch_preview": False,
+        "progress_ui_idle": False,
+        "progress_hook_present": False,
         "no_job_created": False,
         "no_third_party_requests": False,
         "screenshots_valid": False,
         "real_job_started": False,
+        "single_progress_visible": False,
+        "completion_feedback": False,
         "terminal_success": False,
         "result_visible": False,
         "download_nonempty": False,
         "artifact_valid": False,
         "no_demo": False,
     }
+    big_path = make_sample(out_dir / "prep-big-3200x2000.png", (3200, 2000))
+    small_path = make_sample(out_dir / "prep-small-640x480.png", (640, 480), (20, 120, 60))
+    checks["big_sample_generated"] = big_path.is_file() and small_path.is_file()
     console_lines: list[str] = []
     page_errors: list[str] = []
     network: list[dict] = []
@@ -195,12 +219,62 @@ def main(argv=None) -> int:
         if args.prepare_only:
             checks["runbutton_disabled_in_not_ready"] = page.locator("#runBtn").is_disabled()
             shot("02-preview-notready.png")
+
+            # >2K 大图：页面预览必须完整解码（只预览，不触发推理）
+            page.set_input_files("#file", str(big_path))
+            page.wait_for_function(
+                "document.getElementById('fileInfo').textContent.indexOf('已选择 1 个文件') !== -1",
+                timeout=30_000,
+            )
+            page.wait_for_function(
+                "(() => { const im = document.getElementById('vOrig').querySelector('img');"
+                " return !!im && im.naturalWidth > 0; })()",
+                timeout=30_000,
+            )
+            big_dims = page.evaluate(
+                "(() => { const im = document.getElementById('vOrig').querySelector('img');"
+                " return im ? [im.naturalWidth, im.naturalHeight] : [0, 0]; })()"
+            )
+            checks["big_image_preview"] = bool(
+                big_dims[0] >= 2048
+                and big_dims[1] > 0
+                and abs(big_dims[0] / big_dims[1] - 1.6) < 0.02
+                and not page.locator("#submitErr").inner_text().strip()
+            )
+            shot("03-big-preview-notready.png")
+
+            # 批量准备：3 个文件同时选中，仍不得创建任务
+            page.set_input_files("#file", [str(input_path), str(big_path), str(small_path)])
+            page.wait_for_function(
+                "document.getElementById('fileInfo').textContent.indexOf('已选择 3 个文件') !== -1",
+                timeout=30_000,
+            )
+            checks["batch_preview"] = (
+                page.locator("#runBtn").is_disabled()
+                and not page.locator("#submitErr").inner_text().strip()
+            )
+            shot("04-batch-preview-notready.png")
+
+            checks["progress_ui_idle"] = page.evaluate(
+                "(() => { const el = document.getElementById('runState');"
+                " return !!el && el.hidden === true && !!document.getElementById('runTimer'); })()"
+            )
+            checks["progress_hook_present"] = page.evaluate(
+                "typeof beginRun === 'function' && typeof endRun === 'function'"
+            )
             posts = [n for n in network if n["method"] == "POST"
                      and ("/api/matting/single" in n["url"] or "/api/batch" in n["url"])]
             checks["no_job_created"] = not posts and not page.locator("#submitErr").inner_text().strip()
         else:
             page.click("#runBtn")
             checks["real_job_started"] = True
+            try:
+                page.wait_for_selector("#runState", state="visible", timeout=30_000)
+                running_label = page.locator("#runLabel").inner_text()
+                checks["single_progress_visible"] = "RUNNING" in running_label
+                shot("02-running.png")
+            except Exception as exc:  # noqa: BLE001 - 记录为断言失败，不中断下载校验
+                error_msg = error_msg or f"未观察到 RUNNING 进度态：{exc}"
             page.wait_for_selector("#dl", state="visible", timeout=int(args.timeout * 1000))
             checks["terminal_success"] = True
             for vid in ("#vMask", "#vResult"):
@@ -208,7 +282,11 @@ def main(argv=None) -> int:
                     f"document.querySelector('{vid} img') !== null", timeout=60_000
                 )
             checks["result_visible"] = True
-            shot("02-result.png")
+            done_text = page.locator("#doneNote").inner_text()
+            checks["completion_feedback"] = (
+                page.locator("#doneNote").is_visible() and "完成" in done_text
+            )
+            shot("03-result.png")
             with page.expect_download(timeout=60_000) as download_info:
                 page.click("#dl")
             download = download_info.value
@@ -235,7 +313,7 @@ def main(argv=None) -> int:
                         )
             except Exception as exc:  # noqa: BLE001
                 error_msg = error_msg or f"产物校验失败：{exc}"
-            shot("03-downloaded.png")
+            shot("04-downloaded.png")
 
         third_party = [n for n in network if not same_origin(n["url"])]
         checks["no_third_party_requests"] = not third_party
@@ -250,7 +328,9 @@ def main(argv=None) -> int:
 
     required = (
         ["status_not_ready", "notready_badge", "notready_note",
-         "runbutton_disabled_in_not_ready", "file_preview_visible", "no_job_created"]
+         "runbutton_disabled_in_not_ready", "file_preview_visible",
+         "big_sample_generated", "big_image_preview", "batch_preview",
+         "progress_ui_idle", "progress_hook_present", "no_job_created"]
         if args.prepare_only
         else ["status_ready", "no_demo", "file_preview_visible", "real_job_started",
               "terminal_success", "result_visible", "download_nonempty", "artifact_valid"]
