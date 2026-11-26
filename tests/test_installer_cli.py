@@ -48,7 +48,7 @@ def nsis_remove_from_user_path(path: str, entry: str = ENTRY) -> str:
         (rf"{ENTRY};", ENTRY),
         (rf"C:\Tools;{ENTRY};C:\Windows", rf"C:\Tools;{ENTRY};C:\Windows"),
         (rf"{ENTRY}-Extra", rf"{ENTRY}-Extra;{ENTRY}"),
-        (rf"C:\A;C:\B", rf"C:\A;C:\B;{ENTRY}"),
+        (r"C:\A;C:\B", rf"C:\A;C:\B;{ENTRY}"),
     ],
 )
 def test_add_to_user_path_boundaries(original: str, expected_after_add: str) -> None:

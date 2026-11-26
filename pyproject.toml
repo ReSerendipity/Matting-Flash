@@ -6,3 +6,25 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "ReSerendipity" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# 中文项目：RUF001-003 的全角字符告警会产生数百条噪音，不纳入门禁。
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ISC"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+follow_imports = "silent"
+plugins = []
+
+[[tool.mypy.overrides]]
+module = "app.adapter"
+# Pillow 新版类型桩把 Image.BILINEAR 标为不存在；既有代码在运行时可用。
+disable_error_code = ["attr-defined"]

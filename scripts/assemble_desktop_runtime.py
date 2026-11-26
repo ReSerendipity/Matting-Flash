@@ -23,7 +23,7 @@ from pathlib import Path
 try:
     from packaging.requirements import Requirement
 except ImportError:  # pragma: no cover - packaging 是 pip 自带依赖，构建机必有
-    raise SystemExit("缺少 packaging（pip 自带）；请用完整 CPython 环境运行本脚本")
+    raise SystemExit("缺少 packaging（pip 自带）；请用完整 CPython 环境运行本脚本") from None
 
 # 应用与真实推理路径需要的最小根集（与 requirements.txt / weights/requirements.txt 对齐）。
 DEFAULT_ROOTS = [

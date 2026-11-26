@@ -4,11 +4,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from PIL import Image
+from runtime_fakes import FakeModel, FakeTorch, FakeTransforms
 
 from app import config
 from app.adapter import ModelNotReady, ModelState
-
-from runtime_fakes import FakeModel, FakeTorch, FakeTransforms
 
 
 def _fresh_adapter(monkeypatch, tmp_path, *, cuda: bool = True, weight: bool = True):
@@ -29,7 +28,7 @@ def test_cuda_path_converts_to_half_before_moving_to_gpu(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "_build_model", lambda: fake)
 
     adapter = mod.BiRefNetAdapter()
-    model = adapter._ensure_model()
+    adapter._ensure_model()
 
     assert fake.calls == ["eval", "half", "to:cuda"], (
         "必须先在宿主内存 .half() 再 .to('cuda')，避免 FP32 全量权重先占卡"

@@ -44,6 +44,24 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 
 浏览器打开 http://127.0.0.1:8765 ，拖入图片即可（模型就绪时）。头部徽章实时显示 `NOT_READY`/`READY`。
 
+## CLI（人 / AI agent 可直接调用）
+
+无需 Web 页面即可抠图、查任务与下载结果；契约见 `docs/ADR-CLI.md`。
+
+```powershell
+# 源码环境
+.\.venv\Scripts\python.exe -m app.integrated_app.cli --help
+.\.venv\Scripts\python.exe -m app.integrated_app.cli single -i photo.jpg -o results --json
+.\.venv\Scripts\python.exe -m app.integrated_app.cli batch --input-dir photos -o results
+.\.venv\Scripts\python.exe -m app.integrated_app.cli jobs list --json
+.\.venv\Scripts\python.exe -m app.integrated_app.cli results download <name> -o out/
+```
+
+- 输出：`Result` 信封（`success/data/error/code/command/warnings`）；`--json` 可放任意位置，stdout 只有一行严格 JSON。
+- 退出码：`0` 成功 / `1` 业务错误 / `2` 用法错误 / `3` 未就绪（缺权重或运行时）。
+- 安装桌面版后，安装目录已加入当前用户 PATH，任意目录可直接敲 `matting ...`；开始菜单也有 CLI 快捷方式。
+- 批量任务台账落 `results/cli_jobs.json`，`jobs` 子命令跨进程可查；产物统一落 `results/`（安装态为用户数据目录）。
+
 ## 桌面版（Windows，Tauri 2 + NSIS 当前用户安装器）
 
 - 安装包与数据分卷需同目录：`Matting-Flash-Setup-v<version>.exe` + `Matting-Flash-Data.7z.001..NNN`（SHA256 见 `SHA256SUMS`）。

@@ -1,8 +1,6 @@
 """透明 PNG 导出测试：alpha、颜色模式与尺寸保持。"""
 from __future__ import annotations
 
-import io
-
 import numpy as np
 import pytest
 from PIL import Image

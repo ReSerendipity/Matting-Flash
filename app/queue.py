@@ -16,7 +16,8 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from . import config
-from .adapter import ModelNotReady, adapter as default_adapter
+from .adapter import ModelNotReady
+from .adapter import adapter as default_adapter
 
 
 class JobState(str, Enum):

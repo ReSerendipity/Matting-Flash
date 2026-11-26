@@ -9,14 +9,13 @@ import io
 import numpy as np
 import pytest
 from PIL import Image
+from runtime_fakes import FakeModel, FakeTorch, FakeTransforms
 
 from app import config
 from app.adapter import ModelState, infer_target_size, restore_alpha
 from app.export_png import composite_rgba
 from app.postprocess import PostParams
 from app.queue import MattingService
-
-from runtime_fakes import FakeModel, FakeTorch, FakeTransforms
 
 
 def _patched_adapter(monkeypatch, tmp_path, *, cuda: bool = True):

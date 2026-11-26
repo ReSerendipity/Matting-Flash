@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import json
 from pathlib import Path
 
@@ -56,8 +55,8 @@ def status() -> dict:
 
 @app.post("/api/matting/single")
 async def matting_single(
-    file: UploadFile = File(...),
-    params: str | None = Form(None),
+    file: UploadFile = File(...),  # noqa: B008 - FastAPI 依赖注入要求默认值
+    params: str | None = Form(None),  # noqa: B008
 ) -> JSONResponse:
     p = _parse_params(params)
     data = await file.read()
@@ -67,9 +66,9 @@ async def matting_single(
             service.submit_single, file.filename or "upload.png", data, p
         )
     except ModelNotReady as exc:
-        raise HTTPException(status_code=409, detail={"code": "MODEL_NOT_READY", "message": str(exc)})
+        raise HTTPException(status_code=409, detail={"code": "MODEL_NOT_READY", "message": str(exc)}) from exc
     except InvalidFile as exc:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_FILE", "message": str(exc)})
+        raise HTTPException(status_code=400, detail={"code": "INVALID_FILE", "message": str(exc)}) from exc
     cutout = (config.RESULTS_DIR / info["cutout_name"]).read_bytes()
     mask = (config.RESULTS_DIR / info["mask_name"]).read_bytes()
     orig_b64 = _b64(data, mime=file.content_type or "image/png")
@@ -89,8 +88,8 @@ async def matting_single(
 
 @app.post("/api/batch")
 async def batch_submit(
-    files: list[UploadFile] = File(...),
-    params: str | None = Form(None),
+    files: list[UploadFile] = File(...),  # noqa: B008 - FastAPI 依赖注入要求默认值
+    params: str | None = Form(None),  # noqa: B008
 ) -> JSONResponse:
     p = _parse_params(params)
     payloads = []

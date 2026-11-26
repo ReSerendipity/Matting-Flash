@@ -29,10 +29,11 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 - HF 各模型卡标注 MIT；GitHub 仓库 LICENSE 为 MIT。
 - HF 讨论区 #23（2026-09）：作者确认权重可在 MIT 下使用；同时提示训练数据
   （DIS5K 等）条款存在理论上的商用争议，如需 100% 确定性应另行咨询数据集方。
+  本章即差异核对的权威记录，不再引用仓外的 phase-a.md。
 - GitHub Release v1 另提供 `.pth` 与 `.onnx`（general pth ≈ 885MB），同为官方
   MIT 口径。
 - 工单/品类全景中 "3.07GB" 的口径来自 modelscope 镜像按目录求和，与官方 HF
-  单文件体积不一致；本机以官方一手数据为准，已在 phase-a.md 记录差异。
+  单文件体积不一致；本机以官方一手数据为准，差异口径见上文「权重许可口径」。
 
 ## BiRefNet-V2
 
@@ -52,5 +53,5 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 - 权重：官方 `ZhengPeng7/BiRefNet` 通用权重，`weights/model.safetensors`，444,473,596 字节，SHA256 `9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154`；2026-11-24 经 hf-mirror 直连下载，工具 `huggingface_hub.snapshot_download`。
 - 环境：项目内 `.venv-real`，以 `--system-site-packages` 复用本机 `torch 2.11.0+cu128`（未重复下载 torch）；仅新装 `timm`，其余（torchvision/transformers/kornia/einops/huggingface-hub 等）继承宿主；`pip check` 通过。
 - 推理：FP16、batch=1、输入固定 Resize 1024×1024（官方 handler 口径，最长边 ≤1024），样本为公有领域肖像（Grace Hopper，512×600）；加载 3.8s、前向 5.2s、峰值显存 1.58GB；脚本输出 alpha 对齐回原图，导出透明 PNG 512×600。
-- 链路：服务 `/api/status` = `READY`；`/api/matting/single` 返回 RGBA 512×600 透明 PNG，alpha 非空（180,463 个非全透明像素）。证据目录 `results/real-20261124-214136/`，阶段报告见 `phase-c.md`。
+- 链路：服务 `/api/status` = `READY`；`/api/matting/single` 返回 RGBA 512×600 透明 PNG，alpha 非空（180,463 个非全透明像素）。证据目录 `results/real-20261124-214136/`，口径以本文件与 `README.md` 为准（不再引用仓外的 phase-c.md）。
 - **未测边界**：>2K 高分辨率输入的显存/耗时（目前只有 fake 契约）；批量真实推理链路（本次仅单图）；FP16 上卡顺序调整后的真实峰值；HR/Matting 等其他官方变体未下未测。

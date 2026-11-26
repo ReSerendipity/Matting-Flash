@@ -218,7 +218,7 @@ def test_worker_runs_serially_and_every_job_gets_own_result(tmp_path, monkeypatc
     assert ad.max_active == 1, "串行队列：同一时刻只允许一次推理"
     assert len(ad.calls) == 3
     assert len({j.result_name for j in jobs}) == 3, "任务间结果名不得重复"
-    for job, (w, h) in zip(jobs, sizes):
+    for job, (w, h) in zip(jobs, sizes, strict=True):
         with Image.open(tmp_path / job.result_name) as im:
             assert im.size == (w, h), f"{job.filename} 拿到了别的任务的结果"
             assert im.mode == "RGBA"
