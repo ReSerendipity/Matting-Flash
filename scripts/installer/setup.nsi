@@ -5,6 +5,11 @@
 Unicode true
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "StrFunc.nsh"
+; CLI 全局命令：PATH 幂等追加与卸载精确移除（安装/卸载分别 Using，不能混用）
+${Using:StrFunc} StrStr
+${Using:StrFunc} UnStrStr
+${Using:StrFunc} UnStrRep
 
 !define APP_NAME "Matting-Flash"
 !define APP_DISPLAY_NAME "Matting-Flash 抠图工作台"
@@ -57,6 +62,81 @@ Var KEEP_DATA
   Pop $0
   Sleep 1500
 !macroend
+
+; ---------- CLI 全局命令：HKCU PATH 幂等追加 / 卸载精确移除 ----------
+; 用 ";...;" 包裹整条 PATH 后匹配 ";<INSTDIR>;"，避免把 "C:\Foo\Matting-Flash-Extra"
+; 误判为命中，也避免追加时产生粘连条目。Windows 路径大小写差异在 NSIS StrStr 中
+; 视为不同条目（保守处理：至多留一条无害重复项，不误删他人条目）。
+Function AddToUserPath
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  ReadRegStr $1 HKCU "Environment" "Path"
+  StrCpy $0 "$1" 1 -1
+  ${While} $0 == ";"
+    StrCpy $1 "$1" -1
+    StrCpy $0 "$1" 1 -1
+  ${EndWhile}
+  StrCpy $2 ";$1;"
+  ${StrStr} $3 "$2" ";$INSTDIR;"
+  ${If} $3 == ""
+    ${If} $1 == ""
+      StrCpy $1 "$INSTDIR"
+    ${Else}
+      StrCpy $0 "$1" 1 -1
+      ${If} $0 == ";"
+        StrCpy $1 "$1$INSTDIR"
+      ${Else}
+        StrCpy $1 "$1;$INSTDIR"
+      ${EndIf}
+    ${EndIf}
+    WriteRegExpandStr HKCU "Environment" "Path" "$1"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+    DetailPrint "已将 CLI 命令目录加入当前用户 PATH: $INSTDIR"
+  ${Else}
+    DetailPrint "CLI 命令目录已在当前用户 PATH 中，跳过"
+  ${EndIf}
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+Function un.RemoveFromUserPath
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  ReadRegStr $1 HKCU "Environment" "Path"
+  ; 先归一化尾部分隔符，再循环移除所有精确条目与重复分号
+  StrCpy $0 "$1" 1 -1
+  ${While} $0 == ";"
+    StrCpy $1 "$1" -1
+    StrCpy $0 "$1" 1 -1
+  ${EndWhile}
+  StrCpy $1 ";$1;"
+  ${UnStrStr} $2 "$1" ";$INSTDIR;"
+  ${IfNot} $2 == ""
+    ${While} $2 != ""
+      ${UnStrRep} $1 "$1" ";$INSTDIR;" ";"
+      ${UnStrStr} $2 "$1" ";$INSTDIR;"
+    ${EndWhile}
+    ${While} $2 != ""
+      ${UnStrRep} $1 "$1" ";;" ";"
+      ${UnStrStr} $2 "$1" ";;"
+    ${EndWhile}
+    StrCpy $1 "$1" "" 1
+    StrCpy $1 "$1" -1
+    WriteRegExpandStr HKCU "Environment" "Path" "$1"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+    DetailPrint "已从当前用户 PATH 移除 CLI 命令目录: $INSTDIR"
+  ${EndIf}
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
 
 ; ---------- MUI 页面 ----------
 !define MUI_ABORTWARNING
@@ -160,6 +240,16 @@ Section "${APP_DISPLAY_NAME}" SEC_APP
   WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
   WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" ${ESTIMATED_SIZE_KB}
 
+  ; ---------- CLI 全局命令：shim 放在 PATH 根目录，注册后任意目录可敲 matting ----------
+  SetOutPath "$INSTDIR"
+  File "matting.cmd"
+  Call AddToUserPath
+
+  ; 开始菜单 CLI 快捷方式：cmd.exe 用 $SYSDIR（COMSPEC 编译期未知）
+  !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
+    CreateShortcut "$SMPROGRAMS\$StartMenuFolder\Matting-Flash CLI.lnk" "$SYSDIR\cmd.exe" '/k "$INSTDIR\matting.cmd" --help'
+  !insertmacro MUI_STARTMENU_WRITE_END
+
   WriteUninstaller "$INSTDIR\uninstall.exe"
   RMDir /r "$TOOLSDIR"
 SectionEnd
@@ -180,7 +270,11 @@ Section "Uninstall"
   Delete "$DESKTOP\${APP_DISPLAY_NAME}.lnk"
   !insertmacro MUI_STARTMENU_GETFOLDER Application $StartMenuFolder
   Delete "$SMPROGRAMS\$StartMenuFolder\${APP_DISPLAY_NAME}.lnk"
+  Delete "$SMPROGRAMS\$StartMenuFolder\Matting-Flash CLI.lnk"
   RMDir "$SMPROGRAMS\$StartMenuFolder"
+  Delete "$INSTDIR\matting.cmd"
+  ; CLI 全局命令：先精确移除 PATH 条目，再删注册表键
+  Call un.RemoveFromUserPath
 
   DeleteRegKey HKCU "${APP_REG_KEY}"
   DeleteRegKey HKCU "${UNINST_KEY}"

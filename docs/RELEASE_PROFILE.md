@@ -61,9 +61,15 @@
 - **分发形态：`Matting-Flash-Setup-v<version>.exe` 与 `Matting-Flash-Data.7z.001..NNN` 必须位于同一目录**。
   安装器从 `$EXEDIR`（或 `$EXEDIR\data`）读取首卷，用内嵌的独立 `7za.exe` 解压到 `$INSTDIR`；缺卷时明确报错并中止（不静默装半套）。
   这样避免把 2GB+ 运行时二次嵌入 32 位 NSIS 壳，也避免解压前复制一份到 `%TEMP%`。
-- 快捷方式：桌面 + 开始菜单；卸载信息写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Matting-Flash`（DisplayName/DisplayVersion/UninstallString/QuietUninstallString/EstimatedSize/InstallLocation）。
+- 快捷方式：桌面 + 开始菜单（另含「Matting-Flash CLI」，`$SYSDIR\cmd.exe /k "<INSTDIR>\matting.cmd" --help`）；卸载信息写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Matting-Flash`（DisplayName/DisplayVersion/UninstallString/QuietUninstallString/EstimatedSize/InstallLocation）。
 - 安装时创建 `%LOCALAPPDATA%\Matting-Flash\{weights,results,logs}`，覆盖安装不清理。
 - 所有 MessageBox 均有 `IfSilent` 守卫：`/S` 静默安装不弹窗、不挂起。
+
+### CLI 全局命令（S1）
+
+- 安装器把 `scripts/installer/matting.cmd`（ASCII-only）复制到 `$INSTDIR` 根目录，并幂等追加 `$INSTDIR` 到 HKCU `Environment\Path`，广播 `WM_SETTINGCHANGE`；卸载时先精确移除条目再删注册表键。
+- PATH 匹配用 `";...;"` 包裹后查 `;$INSTDIR;`，避免 `Matting-Flash-Extra` 之类前缀同名目录被误判；重复条目循环移除、分号折叠，安装前后 PATH 除本仓条目外不变。等价语言边界模拟见 `tests/test_installer_cli.py`（8+8 组）。
+- shim 定位 `<InstallDir>\app\runtime\python.exe` 与 `<InstallDir>\app\app\integrated_app\cli.py`，设置离线缓存环境变量与用户数据目录，`%*` 透传、`exit /b %ERRORLEVEL%`；缺运行时/CLI 入口返回 3（NOT_READY）。
 
 ### 卸载
 
