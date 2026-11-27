@@ -257,7 +257,7 @@ if ($SkipSmoke) {
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         if (Test-Path -LiteralPath $shellLog) {
-            $readyLine = (Get-Content -LiteralPath $shellLog -Raw -ErrorAction SilentlyContinue |
+            $readyLine = (Get-Content -LiteralPath $shellLog -Raw -Encoding UTF8 -ErrorAction SilentlyContinue |
                 Select-String -Pattern 'Python 服务就绪，端口=(\d+)' | Select-Object -First 1)
             if ($readyLine) { break }
         }
@@ -281,7 +281,7 @@ if ($SkipSmoke) {
     $pythonLog = Get-ChildItem -LiteralPath (Join-Path $smokeDir 'logs') -Filter 'desktop_python_*.log' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $pythonLog) { throw '未生成 desktop_python_*.log' }
-    $anchor = Select-String -LiteralPath $pythonLog.FullName -Pattern '监听端口: (\d+)' | Select-Object -First 1
+    $anchor = Select-String -LiteralPath $pythonLog.FullName -Encoding Default -Pattern '监听端口: (\d+)' | Select-Object -First 1
     if (-not $anchor -or [int]$anchor.Matches[0].Groups[1].Value -ne $port) {
         throw "端口日志锚点不一致：shell=$port，python日志=$($anchor.Line)"
     }
@@ -303,7 +303,7 @@ if ($SkipSmoke) {
     $orphans = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like "*$stagingDir*desktop_launch.py*" })
     if ($orphans.Count -gt 0) { throw "退出后仍有 $($orphans.Count) 个孤儿 python 进程" }
-    $exitLog = Select-String -LiteralPath $shellLog -Pattern 'Python 进程树已停止|Matting-Flash 壳已退出' -ErrorAction SilentlyContinue
+    $exitLog = Select-String -LiteralPath $shellLog -Encoding UTF8 -Pattern 'Python 进程树已停止|Matting-Flash 壳已退出' -ErrorAction SilentlyContinue
     if (-not $exitLog) { Write-Warning '壳日志未出现退出清理锚点（可能被强制终止）' }
     Write-Host '    · 退出后无孤儿 python 进程'
     Remove-Item Env:MATTING_LOG_DIR, Env:MATTING_WEIGHTS_DIR, Env:MATTING_RESULTS_DIR, Env:MATTING_STARTUP_TIMEOUT_SECS, Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue
