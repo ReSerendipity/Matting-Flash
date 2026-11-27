@@ -309,14 +309,18 @@ if ($SkipSmoke) {
     Remove-Item Env:MATTING_LOG_DIR, Env:MATTING_WEIGHTS_DIR, Env:MATTING_RESULTS_DIR, Env:MATTING_STARTUP_TIMEOUT_SECS, Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue
 }
 
-# ------------------------------------------------ 包前缓存零容忍 ----
+# ------------------------------------------------ 包前缓存/运行时状态零容忍 ----
 $cacheDirs = @(Get-ChildItem -LiteralPath $stagingDir -Recurse -Directory -Filter '__pycache__' -ErrorAction SilentlyContinue)
 foreach ($d in $cacheDirs) { Remove-Item -LiteralPath $d.FullName -Recurse -Force }
 Get-ChildItem -LiteralPath $stagingDir -Recurse -File -Filter '*.pyc' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath (Join-Path $stagingDir 'app') -File -Filter '.server_port' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath (Join-Path $stagingDir 'app') -File -Filter '*.server_port.tmp' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 $leftCaches = @(Get-ChildItem -LiteralPath $stagingDir -Recurse -Directory -Filter '__pycache__' -ErrorAction SilentlyContinue)
 $leftPyc = @(Get-ChildItem -LiteralPath $stagingDir -Recurse -File -Filter '*.pyc' -ErrorAction SilentlyContinue)
-if ($leftCaches.Count -gt 0 -or $leftPyc.Count -gt 0) {
-    throw "打包前 staging 仍含字节码缓存：__pycache__=$($leftCaches.Count)，pyc=$($leftPyc.Count)"
+$leftPortFiles = @(Get-ChildItem -LiteralPath (Join-Path $stagingDir 'app') -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq '.server_port' -or $_.Name -like '*.server_port.tmp' })
+if ($leftCaches.Count -gt 0 -or $leftPyc.Count -gt 0 -or $leftPortFiles.Count -gt 0) {
+    throw "打包前 staging 仍含缓存或运行时状态：__pycache__=$($leftCaches.Count)，pyc=$($leftPyc.Count)，port_files=$($leftPortFiles.Count)"
 }
 
 # --------------------------------------------------------- 数据分卷 ----
