@@ -1,4 +1,4 @@
-"""U 阶段 L1 静态契约：Rust 传参 ↔ NSIS 检测 ↔ 前端提示 ↔ CI 验收三处成对存在。"""
+"""U 阶段 L1 静态契约：完整安装资产集 ↔ 前端 ↔ NSIS ↔ CI 四处成对存在。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,21 +10,54 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_bytes().decode("utf-8-sig")
 
 
-def test_rust_updater_uses_single_full_installer() -> None:
-    src = read("desktop/src-tauri/src/updater.rs")
+def updater_source() -> str:
+    return read("desktop/src-tauri/src/updater.rs")
+
+
+def test_rust_updater_requires_complete_asset_set() -> None:
+    src = updater_source()
     assert 'const ASSET_TEMPLATE: &str = "Matting-Flash-Setup-v{version}.exe"' in src
-    assert 'const SHA_TEMPLATE: &str = "Matting-Flash-Setup-v{version}.exe.sha256"' in src
-    assert "只认精确完整 exe 名" in src
-    assert ".zip" not in src.split("fn resolve_assets")[1].split("fn extract_hex64")[0]
+    assert 'const DATA_PREFIX: &str = "Matting-Flash-Data.7z."' in src
+    assert 'const SUMS_NAME: &str = "SHA256SUMS"' in src
+    assert "fn resolve_assets" in src
+    assert "fn validate_asset_set" in src
+    assert "fn validate_install_target" in src
+    assert "数据分卷断号或重复" in src
+    assert "更新资产含未知文件" in src
+    assert 'parsed.scheme() == "https"' in src
+    assert 'vec!["/S", "/RELAUNCH"]' in src
     assert '"update-installing"' in src
     assert '"update-progress"' in src
     assert "std::process::exit(0)" in src
-    assert "launch_installer(&exe_path)" in src
+
+
+def test_downloads_are_streamed_to_versioned_part_files() -> None:
+    src = updater_source()
+    assert "bytes_stream()" in src
+    assert "fn persist_stream" in src
+    assert 'part_name.push(".part")' in src
+    assert "fs::rename(&part, dest)" in src
+    assert "file.sync_all()" in src
+    assert "fn prepare_version_dir" in src
+    assert 'root.join(version)' in src
+    production = src.split("#[cfg(test)]", 1)[0]
+    assert "fs::read(" not in production
+    assert "read_to_end" not in production
+
+
+def test_manifest_is_bidirectional_and_hashes_every_payload_asset() -> None:
+    src = updater_source()
+    assert "fn parse_sums" in src
+    assert "fn verify_manifest_coverage" in src
+    assert "fn verify_asset_set" in src
+    assert "SHA256SUMS 缺少资产条目" in src
+    assert "SHA256SUMS 含资产集外条目" in src
+    assert "sha256_of(&path)" in src
 
 
 def test_installer_args_are_silent_and_relaunch() -> None:
-    src = read("desktop/src-tauri/src/updater.rs")
-    body = src.split("fn installer_args()")[1].split("}")[0]
+    src = updater_source()
+    body = src.split("fn installer_args()", 1)[1].split("}", 1)[0]
     assert '"/S"' in body and '"/RELAUNCH"' in body
 
 
@@ -40,42 +73,76 @@ def test_nsis_relaunches_when_flag_present() -> None:
     nsi = read("scripts/installer/setup.nsi")
     assert '${StrStr} $0 "$CMDLINE" "/RELAUNCH"' in nsi
     assert 'Exec \'"$INSTDIR\\${APP_EXE}"\'' in nsi
+    assert "Matting-Flash-Data.7z.001" in nsi
     write_uninstaller = nsi.index("WriteUninstaller")
     relaunch = nsi.index("/RELAUNCH")
     assert relaunch > write_uninstaller, "自动重启段必须在 WriteUninstaller 之后"
-    # 安装段不得递归删除整个安装根（覆盖安装须保留用户安装的程序文件）
-    assert "RMDir /r \"$INSTDIR\"\n" not in nsi.split("Section \"Uninstall\"")[0]
+    assert "RMDir /r \"$INSTDIR\"\n" not in nsi.split("Section \"Uninstall\"", 1)[0]
 
 
-def test_frontend_bridges_update_events() -> None:
+def test_frontend_bridges_asset_list_and_update_events() -> None:
     bridge = read("desktop/src/desktop-bridge.js")
     assert 'listen("update-installing"' in bridge
     assert "mfdu-body" in bridge and "mfdu-actions" in bridge
 
     loading = read("desktop/src/index.html")
-    for token in ('id="mfdu-body"', 'id="mfdu-actions"', "check_update", "start_update", "update-progress"):
+    for token in (
+        'id="mfdu-body"',
+        'id="mfdu-actions"',
+        "check_update",
+        "start_update",
+        "update-progress",
+        "info.assets",
+        "info.total_bytes",
+    ):
         assert token in loading
 
     app = read("static/index.html")
-    assert "check_update" in app
-    assert "start_update" in app
-    assert 'listen("update-installing"' in app
-    assert 'listen("update-error"' in app
+    for token in (
+        "check_update",
+        "start_update",
+        'listen("update-installing"',
+        'listen("update-error"',
+        "info.assets",
+        "info.total_bytes",
+    ):
+        assert token in app
 
 
-def test_ci_acceptance_workflow_is_present() -> None:
+def test_ci_acceptance_downloads_and_verifies_complete_set() -> None:
     ci = read(".github/workflows/verify-relaunch.yml")
     assert "'/S','/RELAUNCH'" in ci
     assert "$appPid" in ci and "$pid =" not in ci
     assert "gh release download" in ci and '--repo "${{ github.repository }}"' in ci
-    assert "Matting-Flash-Setup-v$ver.exe" in ci
+    assert '--pattern "Matting-Flash-Setup-v$ver.exe"' in ci
+    assert '--pattern "Matting-Flash-Data.7z.*"' in ci
+    assert '--pattern "SHA256SUMS"' in ci
+    assert "数据分卷断号或命名非法" in ci
+    assert "SHA256SUMS 缺少资产条目" in ci
+    assert "SHA256SUMS 含资产集外条目" in ci
+    assert "Get-FileHash" in ci
     assert "pyproject.toml" in ci
+
+
+def test_update_commands_are_exposed_to_remote_frontend() -> None:
+    build = read("desktop/src-tauri/build.rs")
+    capability = read("desktop/src-tauri/capabilities/main.json")
+    for command in (
+        "check_update",
+        "start_update",
+        "get_update_state",
+        "get_pending_update",
+        "dismiss_update",
+    ):
+        assert f'"{command}"' in build
+        permission = "allow-" + command.replace("_", "-")
+        assert f'"{permission}"' in capability
+        assert (ROOT / f"desktop/src-tauri/permissions/autogenerated/{command}.toml").is_file()
 
 
 def test_no_legacy_increment_route() -> None:
     assert not (ROOT / ".github/workflows/shell-update.yml").exists()
-    updater = read("desktop/src-tauri/src/updater.rs")
-    # 唯一的 zip 出现处是单测 fixture，用来证明旧增量资产被拒绝；
-    # 生产解析函数只认 ASSET_TEMPLATE（由 test_rust_updater_uses_single_full_installer 钉住）。
-    assert updater.count(".zip") == 2
-    assert "delta" not in updater.lower()
+    production = updater_source().split("#[cfg(test)]", 1)[0]
+    assert ".zip" not in production
+    assert "SHA_TEMPLATE" not in production
+    assert "delta" not in production.lower()

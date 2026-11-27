@@ -115,6 +115,26 @@
     const $ = (id) => document.getElementById(id);
     const bridge = window.__MATTING_DESKTOP__;
 
+    function formatBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value < 1024) return value + " B";
+      const units = ["KiB", "MiB", "GiB", "TiB"];
+      let amount = value / 1024;
+      let unit = 0;
+      while (amount >= 1024 && unit < units.length - 1) {
+        amount /= 1024;
+        unit += 1;
+      }
+      return amount.toFixed(amount >= 10 ? 1 : 2) + " " + units[unit];
+    }
+
+    function updateSummary(info) {
+      if (!info) return "当前已是最新版本";
+      const assets = Array.isArray(info.assets) ? info.assets : [];
+      const volumes = assets.filter((asset) => asset.kind === "data").length;
+      return "发现新版本 v" + info.version + " · " + volumes + " 个数据分卷 · 共 " + formatBytes(info.total_bytes);
+    }
+
     function render(snap) {
       if (!snap) return;
       if (snap.message) $("statusText").textContent = snap.message;
@@ -179,13 +199,13 @@
         }
       });
 
-      // 单一完整包更新：检查 → 下载完整 exe + SHA256 → /S /RELAUNCH → 安装器自动重启。
+      // 完整资产集更新：检查 → 流式下载 Setup + 全部分卷 + SHA256SUMS → 逐文件校验 → /S /RELAUNCH。
       $("checkUpdate").addEventListener("click", async () => {
         $("checkUpdate").disabled = true;
         $("mfdu-body").textContent = "正在检查…";
         try {
           const info = await bridge.invoke("check_update", { auto: false });
-          $("mfdu-body").textContent = info ? "发现新版本 v" + info.version : "当前已是最新版本";
+          $("mfdu-body").textContent = updateSummary(info);
           $("startUpdate").hidden = !info;
         } catch (err) {
           $("mfdu-body").textContent = "检查失败：" + err;
@@ -195,7 +215,7 @@
       });
       $("startUpdate").addEventListener("click", async () => {
         $("startUpdate").disabled = true;
-        $("mfdu-body").textContent = "正在下载完整安装包并校验 SHA256…";
+        $("mfdu-body").textContent = "正在下载完整安装资产集并逐文件校验 SHA256…";
         try {
           await bridge.invoke("start_update");
         } catch (err) {

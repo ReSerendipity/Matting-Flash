@@ -307,6 +307,21 @@ refreshStatus();
   var tauri = window.__TAURI__;
   if (!tauri || !tauri.core || typeof tauri.core.invoke !== "function") return;
   var pending = null;
+  function formatBytes(bytes) {
+    var value = Number(bytes) || 0;
+    if (value < 1024) return value + " B";
+    var units = ["KiB", "MiB", "GiB", "TiB"];
+    var amount = value / 1024;
+    var unit = 0;
+    while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; }
+    return amount.toFixed(amount >= 10 ? 1 : 2) + " " + units[unit];
+  }
+  function updateSummary(info) {
+    if (!info) return "当前已是最新版本";
+    var assets = Array.isArray(info.assets) ? info.assets : [];
+    var volumes = assets.filter(function (asset) { return asset.kind === "data"; }).length;
+    return "发现新版本 v" + info.version + " · " + volumes + " 个数据分卷 · 共 " + formatBytes(info.total_bytes) + "，下载后自动安装并重启";
+  }
   var btn = document.createElement("button");
   btn.textContent = "检查更新";
   btn.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:9999;padding:8px 14px;border:0;border-radius:8px;background:#1f6feb;color:#fff;font-size:13px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.3)";
@@ -319,7 +334,7 @@ refreshStatus();
   install.hidden = true;
   install.onclick = async function () {
     install.disabled = true;
-    msg.textContent = "正在下载完整安装包并校验 SHA256…";
+    msg.textContent = "正在下载完整安装资产集并逐文件校验 SHA256…";
     try { await tauri.core.invoke("start_update"); }
     catch (e) { msg.textContent = "更新失败：" + e; install.disabled = false; }
   };
@@ -329,7 +344,7 @@ refreshStatus();
     btn.disabled = true; msg.textContent = "正在检查…"; box.style.display = "block";
     try {
       pending = await tauri.core.invoke("check_update", { auto: false });
-      msg.textContent = pending ? "发现新版本 v" + pending.version + "（完整安装包约含运行时，下载后自动安装并重启）" : "当前已是最新版本";
+      msg.textContent = updateSummary(pending);
       install.hidden = !pending;
     } catch (e) { msg.textContent = "检查失败：" + e; }
     finally { btn.disabled = false; }

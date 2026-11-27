@@ -8,7 +8,12 @@
     "allow-get-app-info",
     "allow-get-startup-status",
     "allow-retry-start",
-    "allow-open-weights-dir"
+    "allow-open-weights-dir",
+    "allow-check-update",
+    "allow-start-update",
+    "allow-get-update-state",
+    "allow-get-pending-update",
+    "allow-dismiss-update"
   ],
   "remote": {
     "urls": [

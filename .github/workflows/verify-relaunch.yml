@@ -32,31 +32,69 @@ jobs:
           "version=$ver" >> $env:GITHUB_OUTPUT
           Write-Host "target: tag=$tag version=$ver"
 
-      - name: Download full installer from Release
+      - name: Download complete installer asset set from Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ver = "${{ steps.target.outputs.version }}"
           New-Item -ItemType Directory -Path 'dist/verify' -Force | Out-Null
-          gh release download "${{ steps.target.outputs.tag }}" --repo "${{ github.repository }}" --pattern "Matting-Flash-Setup-v$ver.exe" --dir 'dist/verify'
-          if ($LASTEXITCODE -ne 0) { throw "下载安装包失败" }
-          $exe = "dist/verify/Matting-Flash-Setup-v$ver.exe"
-          if (-not (Test-Path -LiteralPath $exe)) { throw "未见安装包: $exe" }
-          Get-Item -LiteralPath $exe | Select-Object Name, Length | Format-Table
+          gh release download "${{ steps.target.outputs.tag }}" --repo "${{ github.repository }}" `
+            --pattern "Matting-Flash-Setup-v$ver.exe" `
+            --pattern "Matting-Flash-Data.7z.*" `
+            --pattern "SHA256SUMS" `
+            --dir 'dist/verify'
+          if ($LASTEXITCODE -ne 0) { throw "下载完整安装资产集失败" }
 
-      - name: Verify SHA256
+          $setup = @(Get-ChildItem -LiteralPath 'dist/verify' -File -Filter "Matting-Flash-Setup-v$ver.exe")
+          if ($setup.Count -ne 1) { throw "需要唯一 Matting-Flash-Setup-v$ver.exe，实际 $($setup.Count) 个" }
+          if (-not (Test-Path -LiteralPath 'dist/verify/SHA256SUMS' -PathType Leaf)) { throw "缺少 SHA256SUMS" }
+
+          $volumes = @(Get-ChildItem -LiteralPath 'dist/verify' -File | Where-Object {
+            $_.Name -like 'Matting-Flash-Data.7z.*'
+          } | Sort-Object Name)
+          if ($volumes.Count -eq 0) { throw "缺少数据分卷 Matting-Flash-Data.7z.001" }
+          for ($i = 0; $i -lt $volumes.Count; $i++) {
+            $expected = 'Matting-Flash-Data.7z.{0:D3}' -f ($i + 1)
+            if ($volumes[$i].Name -ne $expected) { throw "数据分卷断号或命名非法：期望 $expected，实际 $($volumes[$i].Name)" }
+          }
+          Get-ChildItem -LiteralPath 'dist/verify' -File | Select-Object Name, Length | Format-Table
+
+      - name: Verify SHA256SUMS covers and matches every asset
         shell: pwsh
         run: |
-          $ver = "${{ steps.target.outputs.version }}"
-          $exe = "dist/verify/Matting-Flash-Setup-v$ver.exe"
-          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          $shaFile = "$exe.sha256"
-          if (Test-Path -LiteralPath $shaFile) {
-            $expected = (Get-Content -LiteralPath $shaFile -Raw).Trim().Split(' ')[0]
-            if ($hash -ne $expected) { throw "SHA256 不匹配: expected=$expected actual=$hash" }
-          } else {
-            Write-Warning "Release 无 .sha256 资产，跳过比对（实际 hash: $hash）"
+          $dir = 'dist/verify'
+          $manifestPath = Join-Path $dir 'SHA256SUMS'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "缺少 SHA256SUMS" }
+
+          $expected = @{}
+          $assetFiles = @(Get-ChildItem -LiteralPath $dir -File | Where-Object { $_.Name -ne 'SHA256SUMS' })
+          foreach ($file in $assetFiles) { $expected[$file.Name] = $file.FullName }
+
+          $sums = @{}
+          $lineNo = 0
+          foreach ($line in Get-Content -LiteralPath $manifestPath) {
+            $lineNo += 1
+            $text = $line.Trim()
+            if ($text -eq '' -or $text.StartsWith('#')) { continue }
+            if ($text -notmatch '^([0-9a-fA-F]{64})[ \t]+\*?(.+)$') { throw "SHA256SUMS 第 $lineNo 行格式错误" }
+            $hash = $Matches[1].ToLowerInvariant()
+            $name = $Matches[2]
+            if ($sums.ContainsKey($name)) { throw "SHA256SUMS 文件名重复: $name" }
+            $sums[$name] = $hash
+          }
+          if ($sums.Count -eq 0) { throw "SHA256SUMS 为空" }
+
+          foreach ($name in $expected.Keys) {
+            if (-not $sums.ContainsKey($name)) { throw "SHA256SUMS 缺少资产条目: $name" }
+          }
+          foreach ($name in $sums.Keys) {
+            if (-not $expected.ContainsKey($name)) { throw "SHA256SUMS 含资产集外条目: $name" }
+          }
+          foreach ($name in $expected.Keys) {
+            $actual = (Get-FileHash -LiteralPath $expected[$name] -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $sums[$name]) { throw "SHA256 不匹配: $name expected=$($sums[$name]) actual=$actual" }
+            Write-Host "PASS SHA256: $name"
           }
 
       - name: No pre-existing app (clean runner sanity)
@@ -72,10 +110,12 @@ jobs:
         run: |
           $ver = "${{ steps.target.outputs.version }}"
           $exe = (Resolve-Path "dist/verify/Matting-Flash-Setup-v$ver.exe").Path
+          if (-not (Test-Path -LiteralPath (Join-Path (Split-Path $exe) 'SHA256SUMS') -PathType Leaf)) { throw "安装前缺少 SHA256SUMS" }
+          if (-not (Test-Path -LiteralPath (Join-Path (Split-Path $exe) 'Matting-Flash-Data.7z.001') -PathType Leaf)) { throw "安装前缺少数据分卷 .001" }
           Write-Host "launching installer with /S /RELAUNCH: $exe"
           # NSIS 安装完会 Exec 拉起壳；安装器随后退出。
           $p = Start-Process -FilePath $exe -ArgumentList '/S','/RELAUNCH' -PassThru
-          $p | Wait-Process -Timeout 900 -ErrorAction Stop
+          $p | Wait-Process -Timeout 1800 -ErrorAction Stop
           Write-Host "installer exited with code $($p.ExitCode)"
 
       - name: Assert app auto-relaunched

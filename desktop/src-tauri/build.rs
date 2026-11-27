@@ -9,6 +9,11 @@ fn main() {
                 "get_startup_status",
                 "retry_start",
                 "open_weights_dir",
+                "check_update",
+                "start_update",
+                "get_update_state",
+                "get_pending_update",
+                "dismiss_update",
             ]),
         ),
     )

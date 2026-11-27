@@ -177,16 +177,40 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-update",
+          "markdownDescription": "Enables the check_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the dismiss_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-dismiss-update",
+          "markdownDescription": "Enables the dismiss_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_app_info command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-app-info",
           "markdownDescription": "Enables the get_app_info command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_pending_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-pending-update",
+          "markdownDescription": "Enables the get_pending_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_startup_status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-startup-status",
           "markdownDescription": "Enables the get_startup_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-update-state",
+          "markdownDescription": "Enables the get_update_state command without any pre-configured scope."
         },
         {
           "description": "Enables the open_weights_dir command without any pre-configured scope.",
@@ -201,16 +225,46 @@
           "markdownDescription": "Enables the retry_start command without any pre-configured scope."
         },
         {
+          "description": "Enables the start_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-update",
+          "markdownDescription": "Enables the start_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-update",
+          "markdownDescription": "Denies the check_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the dismiss_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-dismiss-update",
+          "markdownDescription": "Denies the dismiss_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the get_app_info command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-app-info",
           "markdownDescription": "Denies the get_app_info command without any pre-configured scope."
         },
         {
+          "description": "Denies the get_pending_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-pending-update",
+          "markdownDescription": "Denies the get_pending_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the get_startup_status command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-startup-status",
           "markdownDescription": "Denies the get_startup_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-update-state",
+          "markdownDescription": "Denies the get_update_state command without any pre-configured scope."
         },
         {
           "description": "Denies the open_weights_dir command without any pre-configured scope.",
@@ -223,6 +277,12 @@
           "type": "string",
           "const": "deny-retry-start",
           "markdownDescription": "Denies the retry_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-update",
+          "markdownDescription": "Denies the start_update command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
