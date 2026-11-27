@@ -68,8 +68,14 @@ function Get-TreeStats([string]$Path) {
 }
 function Invoke-Logged([string]$Name, [string]$LogDir, [string]$Exe, [string[]]$Arguments) {
     $log = Join-Path $LogDir "$Name.log"
-    $output = & $Exe @Arguments 2>&1
-    $code = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $Exe @Arguments 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     $output | Tee-Object -FilePath $log | Out-Null
     return [pscustomobject]@{ Code = $code; Output = @($output) }
 }
