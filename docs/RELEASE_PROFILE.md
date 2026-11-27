@@ -86,3 +86,12 @@
 | `upload-list.json` | 待上传清单（文件名/字节/SHA256） |
 
 构建根：`D:/R5Build/Matting-Flash/`（`cargo-target`、`runtime`、`staging`、`dist`、`tmp` 全在 D 盘）。
+
+## 6. 更新路线（单一完整包）
+
+- 资产：`Matting-Flash-Setup-v<version>.exe` + 同名 `.sha256`（或 Release 正文里的 64 位 hash）；官网与「检查更新」共用。`desktop/src-tauri/src/updater.rs` 只认精确资产名，遇到旧增量 zip 直接报「更新包不存在」。
+- 客户端流程：`check_update` → `start_update` → 下载 → SHA256 → `update-installing` → `/S /RELAUNCH` 启动安装器 → 壳有序退出 → NSIS 装完 `Exec` 拉起 `Matting-Flash.exe`（第 7 步自动重启）。
+- 前端入口：加载页 `mfdu-*` 面板；主页面（`static/index.html`）在 Tauri WebView 内显示浮动「检查更新」按钮，浏览器直开时自动隐藏。
+- 覆盖语义：安装段没有 `RMDir /r "$INSTDIR"`，用户数据（权重/结果/日志）在 `%LOCALAPPDATA%\Matting-Flash` 且卸载默认保留；新用户是「全新安装」，老用户重复运行安装包才是「覆盖安装」。
+- 验收：L1 `tests/test_update_contract.py`；L2 NSIS `/RELAUNCH` 最小探针（`/S /RELAUNCH` 生成标记，单独 `/S` 不生成）；L3 `.github/workflows/verify-relaunch.yml`（需 Release 完整 exe，当前无远端资产，待发布后手工触发）。
+- 版本权威：`pyproject.toml` 与 `app.__version__` / `Cargo.toml` / `tauri.conf.json` 一致，由 `tests/test_desktop_version.py` 守护；CI 验收从安装后 `app/pyproject.toml` 读取版本号。

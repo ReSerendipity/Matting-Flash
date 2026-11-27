@@ -300,5 +300,52 @@ async function pollJobs() {
 syncLabels();
 refreshStatus();
 </script>
+<script>
+/* 桌面壳内（withGlobalTauri）提供「检查更新」入口；浏览器直开时本段自动隐身。 */
+(function () {
+  "use strict";
+  var tauri = window.__TAURI__;
+  if (!tauri || !tauri.core || typeof tauri.core.invoke !== "function") return;
+  var pending = null;
+  var btn = document.createElement("button");
+  btn.textContent = "检查更新";
+  btn.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:9999;padding:8px 14px;border:0;border-radius:8px;background:#1f6feb;color:#fff;font-size:13px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.3)";
+  var box = document.createElement("div");
+  box.style.cssText = "position:fixed;right:18px;bottom:60px;z-index:9999;display:none;max-width:320px;padding:14px 16px;border-radius:10px;background:#fff;color:#222;box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:13px;line-height:1.6";
+  var msg = document.createElement("div");
+  var install = document.createElement("button");
+  install.textContent = "下载并安装完整包";
+  install.style.cssText = "margin-top:10px;padding:7px 12px;border:0;border-radius:8px;background:#1f6feb;color:#fff;cursor:pointer";
+  install.hidden = true;
+  install.onclick = async function () {
+    install.disabled = true;
+    msg.textContent = "正在下载完整安装包并校验 SHA256…";
+    try { await tauri.core.invoke("start_update"); }
+    catch (e) { msg.textContent = "更新失败：" + e; install.disabled = false; }
+  };
+  box.appendChild(msg); box.appendChild(install);
+  document.body.appendChild(box); document.body.appendChild(btn);
+  btn.onclick = async function () {
+    btn.disabled = true; msg.textContent = "正在检查…"; box.style.display = "block";
+    try {
+      pending = await tauri.core.invoke("check_update", { auto: false });
+      msg.textContent = pending ? "发现新版本 v" + pending.version + "（完整安装包约含运行时，下载后自动安装并重启）" : "当前已是最新版本";
+      install.hidden = !pending;
+    } catch (e) { msg.textContent = "检查失败：" + e; }
+    finally { btn.disabled = false; }
+  };
+  if (tauri.event && typeof tauri.event.listen === "function") {
+    tauri.event.listen("update-installing", function (event) {
+      var p = event.payload || {};
+      msg.textContent = p.message || "应用即将关闭，安装程序将自动完成更新并重新启动。";
+      install.hidden = true;
+    });
+    tauri.event.listen("update-error", function (event) {
+      msg.textContent = "更新失败：" + ((event.payload || {}).message || "未知错误");
+      install.disabled = false;
+    });
+  }
+})();
+</script>
 </body>
 </html>

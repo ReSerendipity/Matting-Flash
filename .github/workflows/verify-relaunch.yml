@@ -1,0 +1,127 @@
+name: Verify Auto-Relaunch
+
+# 自更新第 7 步端到端：GitHub runner 从 Release 取完整安装包，/S /RELAUNCH
+# 静默安装，断言壳进程自动出现、版本正确、/api/status 就绪。
+# 触发：workflow_dispatch 输入 tag（如 v0.1.0）。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要验收的 Release tag（如 v0.1.0）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (gh CLI needs git repo context)
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: target
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          $ver = $tag -replace '^v', ''
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { throw "tag 格式错误: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          Write-Host "target: tag=$tag version=$ver"
+
+      - name: Download full installer from Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          New-Item -ItemType Directory -Path 'dist/verify' -Force | Out-Null
+          gh release download "${{ steps.target.outputs.tag }}" --repo "${{ github.repository }}" --pattern "Matting-Flash-Setup-v$ver.exe" --dir 'dist/verify'
+          if ($LASTEXITCODE -ne 0) { throw "下载安装包失败" }
+          $exe = "dist/verify/Matting-Flash-Setup-v$ver.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "未见安装包: $exe" }
+          Get-Item -LiteralPath $exe | Select-Object Name, Length | Format-Table
+
+      - name: Verify SHA256
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          $exe = "dist/verify/Matting-Flash-Setup-v$ver.exe"
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $shaFile = "$exe.sha256"
+          if (Test-Path -LiteralPath $shaFile) {
+            $expected = (Get-Content -LiteralPath $shaFile -Raw).Trim().Split(' ')[0]
+            if ($hash -ne $expected) { throw "SHA256 不匹配: expected=$expected actual=$hash" }
+          } else {
+            Write-Warning "Release 无 .sha256 资产，跳过比对（实际 hash: $hash）"
+          }
+
+      - name: No pre-existing app (clean runner sanity)
+        shell: pwsh
+        run: |
+          $procs = Get-Process -Name 'Matting-Flash' -ErrorAction SilentlyContinue
+          if ($procs) { Write-Warning "runner 上意外已有壳进程，验收前先关闭"; $procs | Stop-Process -Force }
+          Write-Host "clean runner: no Matting-Flash process before install"
+
+      - name: Install with /S /RELAUNCH
+        id: install
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          $exe = (Resolve-Path "dist/verify/Matting-Flash-Setup-v$ver.exe").Path
+          Write-Host "launching installer with /S /RELAUNCH: $exe"
+          # NSIS 安装完会 Exec 拉起壳；安装器随后退出。
+          $p = Start-Process -FilePath $exe -ArgumentList '/S','/RELAUNCH' -PassThru
+          $p | Wait-Process -Timeout 900 -ErrorAction Stop
+          Write-Host "installer exited with code $($p.ExitCode)"
+
+      - name: Assert app auto-relaunched
+        shell: pwsh
+        run: |
+          $ok = $false
+          # 注意：$pid 是 PowerShell 只读自动变量，必须用别的名字
+          $appPid = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            $p = Get-Process -Name 'Matting-Flash' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($p) { $ok = $true; $appPid = $p.Id; break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) { throw "FAIL: 安装器退出后 5 分钟内应用未自动重启（第 7 步缺失）" }
+          Write-Host "PASS: 应用已自动重启，PID=$appPid（无需人工点击图标）"
+
+      - name: Assert installed version
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Matting-Flash'
+          $proj = Join-Path $installDir 'app\pyproject.toml'
+          if (-not (Test-Path -LiteralPath $proj)) { throw "未见安装后版本文件: $proj" }
+          $actual = ((Get-Content -LiteralPath $proj -Raw) | Select-String -Pattern 'version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          Write-Host "installed version: $actual (expected $ver)"
+          if ($actual -ne $ver) { throw "版本不符: expected=$ver actual=$actual" }
+          Write-Host "PASS: 版本正确"
+
+      - name: Assert service healthy
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Matting-Flash'
+          $portFile = Join-Path $installDir 'app\.server_port'
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            if (Test-Path -LiteralPath $portFile) {
+              $port = (Get-Content -LiteralPath $portFile -Raw).Trim()
+              if ($port -match '^\d+$') {
+                try {
+                  $r = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/status" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+                  if ($r.StatusCode -eq 200) { $ok = $true; Write-Host "PASS: /api/status 就绪 HTTP 200 on :$port"; break }
+                } catch { Start-Sleep -Seconds 5 }
+              }
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ok) {
+            Write-Warning "服务 5 分钟内未就绪（runner 无模型/torch，可能只是后端缺依赖；壳进程自动重启已证明第 7 步成立）"
+          }

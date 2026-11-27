@@ -5,6 +5,7 @@ mod health_check;
 mod paths;
 mod port_manager;
 mod python_process;
+mod updater;
 mod window;
 
 use std::sync::{Arc, Mutex, OnceLock};
@@ -326,8 +327,15 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
     app.manage(python_state.clone());
     app.manage(Arc::new(StartupStore(Mutex::new(StartupSnapshot::default()))));
+    app.manage(Mutex::new(updater::UpdateState::default()));
 
     window::build_main_window(&handle)?;
+
+    // 启动自动检查更新：网络失败静默，不打断模型启动。
+    let update_handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = updater::check_update(update_handle, true).await;
+    });
 
     let startup_handle = handle.clone();
     let startup_state = python_state.clone();
@@ -450,6 +458,11 @@ fn main() {
             get_startup_status,
             retry_start,
             open_weights_dir,
+            updater::check_update,
+            updater::start_update,
+            updater::get_update_state,
+            updater::get_pending_update,
+            updater::dismiss_update,
         ])
         .setup(setup)
         .build(tauri::generate_context!())

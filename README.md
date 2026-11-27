@@ -76,6 +76,8 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 
 完整端口/健康/安装卸载契约见 `docs/RELEASE_PROFILE.md`。
 
+更新：官网下载与客户端「检查更新」使用同一个完整安装包，下载后 SHA256 校验、`/S /RELAUNCH` 静默安装并自动重启（单一完整包路线，详见 `docs/ADR-CLI.md` §5）。权重不入包，结果/权重/日志保留在用户数据目录。
+
 ## 显存与许可
 
 - 建议 8GB 起步；6GB 需 FP16 + 控制分辨率（官方实测 FP16 1024×1024 ≈ 3.45GB）。依据与口径见 `docs/MODELS.md`。

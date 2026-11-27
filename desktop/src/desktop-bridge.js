@@ -17,4 +17,18 @@
       return tauri.event.listen(event, handler);
     },
   };
+
+  // 自更新第 7 步：Rust 在启动安装器前发出该事件，应用随即有序退出；
+  // 安装器带 /RELAUNCH 会在装完后自动把应用拉起，无需用户手动点击图标。
+  window.__MATTING_DESKTOP__.listen("update-installing", function (r) {
+    var body = document.getElementById("mfdu-body");
+    var actions = document.getElementById("mfdu-actions");
+    var message = (r && r.payload && r.payload.message) || (r && r.message) || "应用即将关闭，安装程序将自动完成更新并重新启动。";
+    if (body) {
+      body.textContent = message;
+      body.style.color = "#15803d";
+      body.style.fontWeight = "600";
+    }
+    if (actions) actions.innerHTML = "";
+  });
 })();

@@ -99,6 +99,14 @@
       页面会显示 <b>NOT_READY</b> 与权重放置目录；模型就绪后自动进入工作台。
       权重放置说明见安装目录下 <b>app/docs/MODELS.md</b>。
     </p>
+
+    <div class="meta" id="mfdu-panel">
+      <div><dt>更新</dt><dd id="mfdu-body">未检查</dd></div>
+      <div class="actions" id="mfdu-actions">
+        <button id="checkUpdate" class="secondary">检查更新</button>
+        <button id="startUpdate" hidden>安装更新</button>
+      </div>
+    </div>
   </main>
 
   <script src="desktop-bridge.js"></script>
@@ -169,6 +177,40 @@
           $("errorText").textContent = "打开目录失败：" + err;
           $("errorText").hidden = false;
         }
+      });
+
+      // 单一完整包更新：检查 → 下载完整 exe + SHA256 → /S /RELAUNCH → 安装器自动重启。
+      $("checkUpdate").addEventListener("click", async () => {
+        $("checkUpdate").disabled = true;
+        $("mfdu-body").textContent = "正在检查…";
+        try {
+          const info = await bridge.invoke("check_update", { auto: false });
+          $("mfdu-body").textContent = info ? "发现新版本 v" + info.version : "当前已是最新版本";
+          $("startUpdate").hidden = !info;
+        } catch (err) {
+          $("mfdu-body").textContent = "检查失败：" + err;
+        } finally {
+          $("checkUpdate").disabled = false;
+        }
+      });
+      $("startUpdate").addEventListener("click", async () => {
+        $("startUpdate").disabled = true;
+        $("mfdu-body").textContent = "正在下载完整安装包并校验 SHA256…";
+        try {
+          await bridge.invoke("start_update");
+        } catch (err) {
+          $("mfdu-body").textContent = "更新失败：" + err;
+          $("startUpdate").disabled = false;
+        }
+      });
+      bridge.listen("update-progress", (event) => {
+        const p = event.payload;
+        if (p && p.message) $("mfdu-body").textContent = p.message;
+      });
+      bridge.listen("update-error", (event) => {
+        const p = event.payload || {};
+        $("mfdu-body").textContent = "更新失败：" + (p.message || "未知错误");
+        $("startUpdate").disabled = false;
       });
     }
 

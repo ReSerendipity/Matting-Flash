@@ -251,6 +251,16 @@ Section "${APP_DISPLAY_NAME}" SEC_APP
   !insertmacro MUI_STARTMENU_WRITE_END
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
+
+  ; ---------- 自更新第 7 步：装完自动重启应用 ----------
+  ; Rust updater 以 `/S /RELAUNCH` 启动本安装包；普通安装不带该标志，不受影响。
+  ; 用 $CMDLINE + StrStr 检测，避免引入额外插件；路径含空格由引号包裹。
+  ${StrStr} $0 "$CMDLINE" "/RELAUNCH"
+  ${If} $0 != ""
+    DetailPrint "更新安装完成，正在重新启动 ${APP_DISPLAY_NAME}…"
+    Exec '"$INSTDIR\${APP_EXE}"'
+  ${EndIf}
+
   RMDir /r "$TOOLSDIR"
 SectionEnd
 
