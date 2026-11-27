@@ -13,6 +13,10 @@ weights/*
 results/*
 !results/.gitkeep
 
+# 桌面壳运行时端口文件（CLI 服务发现用）
+.server_port
+*.server_port.tmp
+
 # 系统/编辑器
 Thumbs.db
 Desktop.ini

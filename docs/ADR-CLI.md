@@ -32,3 +32,23 @@
 | S3 | 服务发现：显式 URL > 环境变量 > 端口文件；6 种降级回落直调 | 真实 HTTP 端点契约实测 + 墙钟/KPI |
 | S4 | 前置校验（缺权重/显存）在模型加载前完成；三类真实冒烟先人眼后数值 | 真实图片三组 + 显存/耗时记录 |
 | U | 单一完整 exe + `/S /RELAUNCH` 第 7 步 | 静态契约 + NSIS 探针 + CI 端到端（本机无 Release 资产时标注 blocking） |
+
+## 4. S3 实测端点契约与 KPI（2026-11-26，httpx 真实请求）
+
+| 请求 | 实测结果 |
+|---|---|
+| `GET /api/status` | 200 `application/json`，含 `state/version/ready/missing_weights`；无 `X-CSRF-Token` / `Set-Cookie`，即无 CSRF 握手 |
+| `GET /health` | 404 JSON；**不能**作为健康端点 |
+| `POST /api/matting/single` | multipart `file` + form `params`（JSON 字符串）；成功返回 `{state:DONE, preview:{result:"data:image/png;base64,..."}, cutout_name, mask_name, width, height}`；缺依赖 409 `{detail:{code:"MODEL_NOT_READY",...}}` |
+| `POST /api/batch` | multipart 重复 `files` + form `params`；返回 `{jobs:[{job_id,state:"queued",...}]}`，需轮询 `/api/jobs/{id}` |
+| `GET /api/jobs` | 200 `{jobs:[...]}` |
+| `GET /results/{name}` | 成功 200 `image/png`；不存在 404 JSON |
+
+服务发现：`--server` > `MATTING_CLI_SERVER` > 端口文件（启动脚本写 `<app>/.server_port`，纯数字，正常退出清理）；2s 探测；6 条降级路径（显式不可达 / 版本不符 / 环境变量不可达 / 无端口文件 / 陈旧端口 / 非法状态响应）全部回落直调，`--no-remote` 强制直调。
+
+墙钟实测（RTX 5070 Ti Laptop 12GB，512×600 公有领域肖像，同一张图）：
+- 直调冷启动（含 torch import + 权重加载 + 前向）：**73.36s**，EXIT=0。
+- 常驻服务已加载后的第 2 次 HTTP 调用：**22.47s**，EXIT=0，约 **3.3×**。
+- 服务日志中「自动加载模型」在两次 HTTP 调用期间新增 **0** 行（首次预热加载 1 行），证明复用的是常驻模型而非重新加载。
+- 条件说明：本机 GPU 同时承载其它本地应用，绝对耗时被抬高；相对收益与本仓「每命令独立进程 import torch 极贵」的架构一致。`remote-warm` 首轮曾因 30s 客户端超时暴露未捕获的传输异常，已修为 `RemoteError` 并回落直调（测试钉住）。
+

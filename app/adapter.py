@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
 from enum import Enum
 
@@ -140,6 +141,8 @@ class BiRefNetAdapter:
             weight = config.find_weight_file()
             if weight is None:
                 raise ModelNotReady(self._detail)
+            # S3 KPI 锚点：每次真实模型加载都记一行；复用常驻服务时该计数必须为 0。
+            logging.getLogger("matting.adapter").info("自动加载模型: %s", weight)
             self._state = ModelState.LOADING
             try:
                 torch, _ = _load_runtime()

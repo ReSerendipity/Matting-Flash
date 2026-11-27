@@ -61,6 +61,7 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 - 退出码：`0` 成功 / `1` 业务错误 / `2` 用法错误 / `3` 未就绪（缺权重或运行时）。
 - 安装桌面版后，安装目录已加入当前用户 PATH，任意目录可直接敲 `matting ...`；开始菜单也有 CLI 快捷方式。
 - 批量任务台账落 `results/cli_jobs.json`，`jobs` 子命令跨进程可查；产物统一落 `results/`（安装态为用户数据目录）。
+- 桌面壳常驻服务可被 `single` / `batch` 自动复用：显式 `--server` > 环境变量 `MATTING_CLI_SERVER` > 端口文件 `.server_port`；`--no-remote` 强制直调；服务不可用时自动回落，不退化。实测契约与 KPI 见 `docs/ADR-CLI.md` §4。
 
 ## 桌面版（Windows，Tauri 2 + NSIS 当前用户安装器）
 

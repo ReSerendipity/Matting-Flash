@@ -34,7 +34,7 @@ from app.integrated_app.cli_output import (  # noqa: E402
 
 def _add_params(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--feather-radius", type=int, default=0, help="边缘羽化半径")
-    parser.add_argument("--threshold", type=int, default=None, help="alpha 二值化阈值（0-255）")
+    parser.add_argument("--threshold", type=float, default=None, help="alpha 阈值（0.0-1.0）")
     parser.add_argument("--binarize", action="store_true", help="alpha 二值化")
     parser.add_argument("--erode", type=int, default=0, help="腐蚀迭代次数")
     parser.add_argument("--dilate", type=int, default=0, help="膨胀迭代次数")
@@ -83,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     dl = results_sub.add_parser("download", aliases=["copy"], help="下载（复制）一个产物")
     dl.add_argument("name", help="results/ 下的纯文件名")
     dl.add_argument("-o", "--output-dir", default=".", help="目标目录或文件")
+    _add_local(dl)
 
     p_presets = sub.add_parser("presets", help="后处理预设与限额")
     p_presets.add_subparsers(dest="action", required=True).add_parser("list")
@@ -117,20 +118,54 @@ def _action(args: argparse.Namespace, as_json: bool) -> str:
     return f"{args.command} {args.action}" if getattr(args, "action", None) else str(args.command)
 
 
+def _remote_for(args: argparse.Namespace, warnings: list[str]) -> str | None:
+    """服务发现：--no-remote 强制直调；显式 URL > 环境变量 > 端口文件。"""
+    from app.integrated_app import cli_remote
+
+    if getattr(args, "no_remote", False):
+        warnings.append("已指定 --no-remote，强制直调")
+        return None
+    base, note = cli_remote.discover(explicit=getattr(args, "server", None))
+    warnings.append(note)
+    return base
+
+
 def _dispatch(args: argparse.Namespace, as_json: bool) -> Result:
     from app.integrated_app import cli_service as svc
 
     cmd = args.command
     action = getattr(args, "action", None)
+    warnings: list[str] = []
     try:
         if cmd == "single":
-            data = svc.single(args.input, args.output_dir, svc.build_params(args))
-            return Result.ok(data, command=cmd)
+            params = svc.build_params(args)
+            base = _remote_for(args, warnings)
+            if base:
+                from app.integrated_app import cli_remote
+
+                try:
+                    data = cli_remote.single(base, args.input, args.output_dir, params)
+                except cli_remote.RemoteError as exc:
+                    warnings.append(f"远端单图失败，回落直调: {exc}")
+                    data = svc.single(args.input, args.output_dir, params)
+            else:
+                data = svc.single(args.input, args.output_dir, params)
+            return Result.ok(data, command=cmd, warnings=warnings)
         if cmd == "batch":
-            data = svc.batch(
-                args.input, args.input_dir, args.output_dir, svc.build_params(args)
-            )
-            result = Result.ok(data, command=cmd)
+            params = svc.build_params(args)
+            base = _remote_for(args, warnings)
+            if base:
+                from app.integrated_app import cli_remote
+
+                data = cli_remote.batch(
+                    base, [str(p) for p in svc._inputs(args.input, args.input_dir)],
+                    args.output_dir, params,
+                )
+            else:
+                data = svc.batch(
+                    args.input, args.input_dir, args.output_dir, params
+                )
+            result = Result.ok(data, command=cmd, warnings=warnings)
             if data["failed"]:
                 result.success = False
                 result.code = "BUSINESS_ERROR"
@@ -149,7 +184,18 @@ def _dispatch(args: argparse.Namespace, as_json: bool) -> Result:
         if cmd == "results" and action == "list":
             return Result.ok(svc.results_list(), command="results list")
         if cmd == "results" and action in ("download", "copy"):
-            return Result.ok(svc.results_download(args.name, args.output_dir), command="results download")
+            base = _remote_for(args, warnings)
+            if base:
+                from app.integrated_app import cli_remote
+
+                try:
+                    data = cli_remote.results_download(base, args.name, args.output_dir)
+                except cli_remote.RemoteError as exc:
+                    warnings.append(f"远端下载失败，回落本地: {exc}")
+                    data = svc.results_download(args.name, args.output_dir)
+            else:
+                data = svc.results_download(args.name, args.output_dir)
+            return Result.ok(data, command="results download", warnings=warnings)
         if cmd == "presets" and action == "list":
             return Result.ok(svc.presets(), command="presets")
         if cmd == "models" and action == "list":

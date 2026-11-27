@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -26,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.path.insert(0, str(app_root))
 
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    # 让 app.adapter 的「自动加载模型」KPI 锚点在服务日志里可见。
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     # 模型与结果目录：优先采纳壳注入的环境变量，回退仓内目录（开发态）。
     weights_dir = os.environ.get("MATTING_WEIGHTS_DIR", str(app_root / "weights"))
@@ -57,8 +60,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[Matting-Flash] 启动失败：导入依赖异常（{exc}）", file=sys.stderr, flush=True)
         return 2
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
-    return 0
+    # 端口文件：供 CLI 发现常驻服务（显式 URL > 环境变量 > 本文件）。
+    # 安装态可用 MATTING_PORT_FILE 指到用户数据目录，默认写应用根（.gitignore 已忽略）。
+    port_file = Path(os.environ.get("MATTING_PORT_FILE", str(app_root / ".server_port")))
+    try:
+        port_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = port_file.with_name(f".{port_file.name}.{os.getpid()}.tmp")
+        tmp.write_text(str(args.port), encoding="ascii")
+        os.replace(tmp, port_file)
+        print(f"[Matting-Flash] 端口文件：{port_file}", flush=True)
+    except OSError as exc:
+        print(f"[Matting-Flash] 警告：端口文件写入失败（{exc}），CLI 自动发现将不可用。", flush=True)
+
+    try:
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        return 0
+    finally:
+        # 服务正常退出时清理陈旧端口；被强杀时 discover() 的 2s 探测会忽略它。
+        try:
+            if port_file.is_file() and port_file.read_text(encoding="ascii").strip() == str(args.port):
+                port_file.unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
