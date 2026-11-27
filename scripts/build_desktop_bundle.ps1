@@ -146,8 +146,8 @@ Write-Host '=============================================='
 Write-Step '[门禁] 版本三件套与主仓一致'
 $mainVersion = [regex]::Match((Get-Content -LiteralPath (Join-Path $Root 'pyproject.toml') -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
 $initVersion = [regex]::Match((Get-Content -LiteralPath (Join-Path $Root 'app\__init__.py') -Raw), '(?m)^__version__\s*=\s*"([^"]+)"').Groups[1].Value
-$pkgVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\package.json') -Raw | ConvertFrom-Json).version
-$confVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json).version
+$pkgVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+$confVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $cargoVersion = [regex]::Match(
     (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\Cargo.toml') -Raw),
     '(?m)^version\s*=\s*"([^"]+)"'
