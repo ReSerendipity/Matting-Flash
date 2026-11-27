@@ -211,6 +211,7 @@ def test_cli_falls_back_to_direct_when_remote_call_fails(
             predict=lambda image: np.full((image.height, image.width), 0.7, dtype=np.float32),
         ),
     )
+    monkeypatch.setattr(cli_service, "_gpu_precheck", lambda warnings=None: None)
     monkeypatch.setattr(cli_remote, "discover", lambda **kw: ("http://mock:1", "mock"))
     monkeypatch.setattr(
         cli_remote, "single", lambda *a, **kw: (_ for _ in ()).throw(cli_remote.RemoteError("mock down"))

@@ -147,9 +147,9 @@ def _dispatch(args: argparse.Namespace, as_json: bool) -> Result:
                     data = cli_remote.single(base, args.input, args.output_dir, params)
                 except cli_remote.RemoteError as exc:
                     warnings.append(f"远端单图失败，回落直调: {exc}")
-                    data = svc.single(args.input, args.output_dir, params)
+                    data = svc.single(args.input, args.output_dir, params, warnings=warnings)
             else:
-                data = svc.single(args.input, args.output_dir, params)
+                data = svc.single(args.input, args.output_dir, params, warnings=warnings)
             return Result.ok(data, command=cmd, warnings=warnings)
         if cmd == "batch":
             params = svc.build_params(args)
@@ -163,7 +163,7 @@ def _dispatch(args: argparse.Namespace, as_json: bool) -> Result:
                 )
             else:
                 data = svc.batch(
-                    args.input, args.input_dir, args.output_dir, params
+                    args.input, args.input_dir, args.output_dir, params, warnings=warnings
                 )
             result = Result.ok(data, command=cmd, warnings=warnings)
             if data["failed"]:

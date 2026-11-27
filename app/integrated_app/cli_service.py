@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -109,18 +110,53 @@ def _ledger_add(entries: list[dict[str, Any]]) -> None:
     _write_ledger(jobs)
 
 
-def _require_ready() -> None:
+def _gpu_precheck(warnings: list[str] | None = None) -> None:
+    """0 秒级 GPU 前置校验：CUDA 不可用或空闲显存 <5GB → NOT_READY（退出码 3）。
+
+    用 nvidia-smi 而非 import torch：后者要数秒，违背「推理前立即拦截」。
+    MATTING_ALLOW_CPU=1 可显式允许 CPU 慢速路径（仅供无 GPU 的开发/诊断）。
+    """
+    if os.environ.get("MATTING_ALLOW_CPU") == "1":
+        if warnings is not None:
+            warnings.append("MATTING_ALLOW_CPU=1：已跳过 GPU 前置校验，将走 CPU 慢速路径")
+        return
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        )
+        free = [int(line.strip()) for line in proc.stdout.splitlines() if line.strip().isdigit()]
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise ModelNotReady(
+            "CUDA 不可用（nvidia-smi 无可用返回）；真实推理需要支持 CUDA 的 GPU。"
+            "如确需在 CPU 上诊断，请设置 MATTING_ALLOW_CPU=1。"
+        ) from exc
+    if not free or max(free) < 5 * 1024:
+        current = f"{max(free) / 1024:.2f}GB" if free else "未知"
+        raise ModelNotReady(
+            f"空闲显存 {current} < 5GB 阈值，加载前硬拦截。"
+            "请关闭占用显存的其它程序（如 ComfyUI / 浏览器 GPU 加速）后重试。"
+        )
+
+
+def _require_ready(warnings: list[str] | None = None) -> None:
     state = _adapter().state.value
     if state != "READY":
         raise ModelNotReady(_adapter().detail or f"模型未就绪（state={state}）")
+    _gpu_precheck(warnings)
 
 
-def single(image: str, output_dir: str, params: PostParams) -> dict[str, Any]:
+def single(
+    image: str, output_dir: str, params: PostParams, warnings: list[str] | None = None
+) -> dict[str, Any]:
     """本地单图抠图：校验 → 复用 service layer → 产物落固定目录。"""
     source = Path(image)
     data = source.read_bytes()  # 缺文件由 CLI 层映射为 NOT_READY
     validate_upload(source.name, data)
-    _require_ready()
+    _require_ready(warnings)
     info = _service().submit_single(source.name, data, params)
     return {
         "mode": "local",
@@ -133,7 +169,11 @@ def single(image: str, output_dir: str, params: PostParams) -> dict[str, Any]:
 
 
 def batch(
-    images: list[str], input_dir: str | None, output_dir: str, params: PostParams
+    images: list[str],
+    input_dir: str | None,
+    output_dir: str,
+    params: PostParams,
+    warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """本地批量：逐张同步走既有任务队列，结果写入 CLI 台账。"""
     sources = _inputs(images, input_dir)
@@ -147,7 +187,7 @@ def batch(
         except (OSError, InvalidFile, ValueError) as exc:
             invalid.append({"input": str(source), "error": str(exc)})
     if payloads:
-        _require_ready()
+        _require_ready(warnings)
 
     service = _service()
     jobs = service.submit_batch(payloads, params)

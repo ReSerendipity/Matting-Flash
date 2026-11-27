@@ -54,4 +54,16 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Zhe
 - 环境：项目内 `.venv-real`，以 `--system-site-packages` 复用本机 `torch 2.11.0+cu128`（未重复下载 torch）；仅新装 `timm`，其余（torchvision/transformers/kornia/einops/huggingface-hub 等）继承宿主；`pip check` 通过。
 - 推理：FP16、batch=1、输入固定 Resize 1024×1024（官方 handler 口径，最长边 ≤1024），样本为公有领域肖像（Grace Hopper，512×600）；加载 3.8s、前向 5.2s、峰值显存 1.58GB；脚本输出 alpha 对齐回原图，导出透明 PNG 512×600。
 - 链路：服务 `/api/status` = `READY`；`/api/matting/single` 返回 RGBA 512×600 透明 PNG，alpha 非空（180,463 个非全透明像素）。证据目录 `results/real-20261124-214136/`，口径以本文件与 `README.md` 为准（不再引用仓外的 phase-c.md）。
-- **未测边界**：>2K 高分辨率输入的显存/耗时（目前只有 fake 契约）；批量真实推理链路（本次仅单图）；FP16 上卡顺序调整后的真实峰值；HR/Matting 等其他官方变体未下未测。
+- **未测边界**：HR/Matting 等其他官方变体未下未测。
+
+## S4 真实边界回归（2026-11-27）
+
+证据目录：`results/s4-real-20261127-082508/`（含输入、`metrics.json`、三组产物 PNG）。环境：RTX 5070 Ti Laptop 12GB、`torch 2.11.0+cu128`、权重官方通用版 444MB、FP16 `cuda:0`、加载 3.29s；加载前空闲显存 11.58GB。
+
+| 组 | 输入 | 耗时 | 峰值显存 | alpha 判定 | 人眼定性 |
+|---|---|---|---|---|---|
+| >2K 单图 | 2219×2600（由 512×600 肖像等比放大） | 19.06s | 1.40GB | mean 0.577 / 非透明占比 58.2% | 主体完整、背景干净透明；帽檐与肩部有极细彩色边缘（原图高对比压缩伪影被 alpha 边缘保留），细发丝细节被 1024 推理尺寸抹平，整体可用 |
+| 批量 | 2 张（512×600 + 1024×768） | 0.53s | 1.58GB | 两任务均 `done` | 两张结果轮廓一致、无串图、无白边或残影 |
+| FP16 上卡顺序 | 512×600（同一肖像） | 0.31s | 1.58GB | mean 0.577 / 非透明占比 58.3% | 与批量首张逐图一致；`.half()` → `.to("cuda")` 后 FP16 前向稳定，无退化 |
+
+分派表排查：本仓仅 1 个引擎（BiRefNet），`app/adapter.py` 直接单例分派，不存在「registry 有但 service 漏注册」型阻塞；CLI 前置 GPU 校验见 `app/integrated_app/cli_service.py::_gpu_precheck`（CUDA 不可用 / 空闲显存 <5GB → 退出码 3 + 修复指引）。

@@ -26,6 +26,7 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     results.mkdir()
     monkeypatch.setattr(cli_service.config, "RESULTS_DIR", results)
     monkeypatch.setattr(cli_service, "_adapter", lambda: FakeAdapter())
+    monkeypatch.setattr(cli_service, "_gpu_precheck", lambda warnings=None: None)
     return tmp_path
 
 
